@@ -360,7 +360,7 @@ contract FiddyPurchaseRevenueTest is FiddyRevenueSetup {
         vm.prank(bob);
         staking.removeFiddyOperator(2);
         vm.prank(bob);
-        fiddy.withdrawFiddy(2, 100, bob);
+        fiddy.withdrawFiddy(2, 100);
         vm.prank(alice);
         staking.unstakeFiddy(1, 100);
         vm.prank(alice);

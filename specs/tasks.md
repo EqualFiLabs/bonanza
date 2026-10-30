@@ -17,6 +17,6 @@ No chain deployment, public conversion activation, AMM construction or sibling-r
 - [x] Book staker revenue at purchase and remove the Statics transfer-history dependency.
 - [x] Lock unstaking for 24 hours with a stake-weighted reset on top-ups.
 - [x] Validate Operator boosts by direct reads and forfeit invalid boost excess.
-- [ ] Restrict FIDDY payouts and require a consumer Router for FIDDY Operator revenue.
+- [x] Restrict FIDDY payouts and require a consumer Router for FIDDY Operator revenue.
 - [ ] Expose the per-account nonce.
 - [ ] Initialize FIDDY with the deployment Diamond cut.

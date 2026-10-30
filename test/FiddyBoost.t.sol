@@ -208,7 +208,7 @@ contract FiddyBoostTest is FiddyRevenueSetup {
         operators.transferFrom(alice, carol, 1);
         vm.startPrank(alice);
         staking.unstakeFiddy(1, 100);
-        fiddy.withdrawFiddy(1, 100, alice);
+        fiddy.withdrawFiddy(1, 100);
         staking.claimFiddyRevenue(1, address(tokenB), alice);
         staking.cleanupFiddyAccount(1);
         vm.stopPrank();

@@ -49,7 +49,7 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
         } else if (mode == 6 && a.balance > a.staked) {
             uint256 amount = 1 + seed % (a.balance - a.staked);
             vm.prank(owner);
-            fiddy.withdrawFiddy(id, amount, owner);
+            fiddy.withdrawFiddy(id, amount);
             vm.prank(owner);
             fiddy.approve(address(diamond), amount);
             vm.prank(owner);

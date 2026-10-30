@@ -5,6 +5,7 @@ import { IGovernance } from "../interfaces/IGovernance.sol";
 import { LibDiamond } from "../libraries/LibDiamond.sol";
 import { LibLotteryConfig } from "../libraries/LibLotteryConfig.sol";
 import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
+import { LibOperatorFeeRouter } from "../libraries/LibOperatorFeeRouter.sol";
 import { LibReentrancy } from "../libraries/LibReentrancy.sol";
 import { Errors } from "../shared/Errors.sol";
 import { IntegrationConfig, LotteryConfig } from "../shared/Types.sol";
@@ -63,6 +64,11 @@ contract LotteryInit {
         for (uint256 i; i < params.lotteryConfigs.length; ++i) {
             LotteryConfig calldata config = params.lotteryConfigs[i];
             LibLotteryConfig.validate(config);
+            if (config.operatorProtocolBps != 0) {
+                LibOperatorFeeRouter.enforcePayable(
+                    params.integration.operatorFeeRouter, config.paymentToken
+                );
+            }
 
             uint64 version = ++game.nextConfigVersion;
             game.configs[version] = config;

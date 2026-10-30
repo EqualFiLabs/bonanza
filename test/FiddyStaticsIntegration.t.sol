@@ -95,7 +95,7 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         IERC721(address(core)).transferFrom(alice, bob, positionId);
         vm.prank(alice);
         vm.expectRevert(FiddyErrors.NotPositionOwner.selector);
-        fiddy.withdrawFiddy(positionId, 1, alice);
+        fiddy.withdrawFiddy(positionId, 1);
         vm.prank(bob);
         staking.unstakeFiddy(positionId, 100 ether);
         vm.prank(bob);
@@ -103,7 +103,7 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         vm.prank(bob);
         assertEq(staking.claimFiddyRevenue(positionId, address(statics), bob), 40);
         vm.prank(bob);
-        fiddy.withdrawFiddy(positionId, 102 ether, bob);
+        fiddy.withdrawFiddy(positionId, 102 ether);
         Round memory round = stateView.round(soldOut);
         vm.prank(round.winner);
         claims.claimWinner(soldOut, round.winner);

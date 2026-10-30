@@ -10,6 +10,7 @@ import { FiddyErrors } from "../shared/FiddyErrors.sol";
 import { LibDiamond } from "../libraries/LibDiamond.sol";
 import { LibLotteryConfig } from "../libraries/LibLotteryConfig.sol";
 import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
+import { LibOperatorFeeRouter } from "../libraries/LibOperatorFeeRouter.sol";
 import { Errors } from "../shared/Errors.sol";
 import { IntegrationConfig, LotteryConfig } from "../shared/Types.sol";
 
@@ -45,6 +46,14 @@ contract GovernanceFacet is IGovernance {
 
     function _createConfig(LotteryConfig calldata config) private returns (uint64 version) {
         LibLotteryConfig.validate(config);
+        if (config.operatorProtocolBps != 0) {
+            LibLotteryStorage.IntegrationStorage storage integrations =
+                LibLotteryStorage.integrationStorage();
+            LibOperatorFeeRouter.enforcePayable(
+                integrations.integrations[integrations.currentVersion].operatorFeeRouter,
+                config.paymentToken
+            );
+        }
         LibLotteryStorage.GameStorage storage gs = LibLotteryStorage.gameStorage();
 
         version = ++gs.nextConfigVersion;

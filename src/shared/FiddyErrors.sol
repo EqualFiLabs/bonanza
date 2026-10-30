@@ -18,4 +18,5 @@ library FiddyErrors {
     error AccountNotEmpty();
     error RevenueAssetLimitReached();
     error StakeLocked(uint256 unlockAt);
+    error ReceiverRestricted(address receiver);
 }

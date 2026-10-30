@@ -65,7 +65,7 @@ contract SelfRebateStaker {
         token.approve(diamond, amount);
         token.depositFiddy(position, amount);
         _stakeBuyAndExit(roundId, tickets, amount);
-        token.withdrawFiddy(position, amount, address(this));
+        token.withdrawFiddy(position, amount);
         token.transfer(address(lender), amount);
     }
 
@@ -117,7 +117,7 @@ contract FiddyStakeLockTest is FiddyRevenueSetup {
         tokenA.approve(address(diamond), type(uint256).max);
         _wrap(5, lp, 1_000_000);
         vm.startPrank(lp);
-        fiddy.withdrawFiddy(5, 1_000_000, lp);
+        fiddy.withdrawFiddy(5, 1_000_000);
         IERC20(address(diamond)).transfer(address(pool), 1_000_000);
         vm.stopPrank();
 
@@ -299,7 +299,7 @@ contract FiddyStakeLockActualStaticsTest is FiddyStaticsIntegrationTest {
         fiddy.setFiddyConsumer(address(pool), true);
         vm.startPrank(alice);
         fiddy.wrapFiddy(positionId, 50 ether);
-        fiddy.withdrawFiddy(positionId, 50 ether, alice);
+        fiddy.withdrawFiddy(positionId, 50 ether);
         IERC20(address(diamond)).transfer(address(pool), 50 ether);
         vm.stopPrank();
         SelfRebateStaker attacker = _attacker(pool);

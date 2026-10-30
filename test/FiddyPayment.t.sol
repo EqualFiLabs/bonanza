@@ -9,7 +9,7 @@ contract FiddyPaymentTest is FiddySetup {
         fiddy.fundFiddyReserve(37);
         _wrap(1, alice, 100);
         vm.prank(alice);
-        fiddy.withdrawFiddy(1, 100, alice);
+        fiddy.withdrawFiddy(1, 100);
         router.setAsset(address(diamond), true, true);
         vm.startPrank(authority);
         fiddy.setFiddyConsumer(address(router), true);

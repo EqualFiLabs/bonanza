@@ -93,7 +93,7 @@ contract FiddyStakingTest is FiddyRevenueSetup {
         vm.prank(alice);
         staking.unstakeFiddy(1, 100);
         vm.prank(alice);
-        fiddy.withdrawFiddy(1, 100, alice);
+        fiddy.withdrawFiddy(1, 100);
         vm.prank(alice);
         vm.expectRevert(FiddyErrors.AccountNotEmpty.selector);
         staking.cleanupFiddyAccount(1);
@@ -177,7 +177,7 @@ contract FiddyStakingTest is FiddyRevenueSetup {
         staking.stakeFiddy(1, 100);
         vm.prank(bob);
         vm.expectRevert(FiddyErrors.NotPositionOwner.selector);
-        fiddy.withdrawFiddy(1, 100, bob);
+        fiddy.withdrawFiddy(1, 100);
     }
 
     function testCleanupRequiresWholeClaimsAndSurrendersOnlyFractions() public {
@@ -188,7 +188,7 @@ contract FiddyStakingTest is FiddyRevenueSetup {
         vm.prank(alice);
         staking.unstakeFiddy(1, 100);
         vm.prank(alice);
-        fiddy.withdrawFiddy(1, 100, alice);
+        fiddy.withdrawFiddy(1, 100);
         vm.prank(alice);
         staking.claimFiddyRevenue(1, address(tokenA), alice);
         vm.prank(alice);

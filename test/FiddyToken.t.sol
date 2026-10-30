@@ -18,7 +18,7 @@ contract FiddyTokenTest is FiddySetup {
         assertEq(revenue.availableTokenSurplus(address(tokenA)), 0);
         vm.startPrank(alice);
         vm.expectRevert(FiddyErrors.InsufficientFiddy.selector);
-        fiddy.withdrawFiddy(1, 100, alice);
+        fiddy.withdrawFiddy(1, 100);
         vm.expectRevert(FiddyErrors.ConversionDisabled.selector);
         fiddy.wrapFiddy(1, 1);
         vm.expectRevert(FiddyErrors.ConversionDisabled.selector);
@@ -49,7 +49,7 @@ contract FiddyTokenTest is FiddySetup {
     function testConsumerRoutesAndAccountOwnershipConserveBacking() public {
         _wrap(1, alice, 100);
         vm.prank(alice);
-        fiddy.withdrawFiddy(1, 40, alice);
+        fiddy.withdrawFiddy(1, 40);
         assertEq(fiddyView.fiddyAccount(1).balance, 60);
         vm.startPrank(alice);
         vm.expectRevert(FiddyErrors.TransferRestricted.selector);
@@ -79,9 +79,9 @@ contract FiddyTokenTest is FiddySetup {
         positions.transferFrom(alice, bob, 1);
         vm.prank(alice);
         vm.expectRevert(FiddyErrors.NotPositionOwner.selector);
-        fiddy.withdrawFiddy(1, 1, alice);
+        fiddy.withdrawFiddy(1, 1);
         vm.prank(bob);
-        fiddy.withdrawFiddy(1, 100, bob);
+        fiddy.withdrawFiddy(1, 100);
         assertEq(fiddy.balanceOf(bob), 100);
     }
 
@@ -154,7 +154,7 @@ contract FiddyTokenTest is FiddySetup {
     function testDepositAllowanceAndRawCustodyRestrictionSurviveConsumerApproval() public {
         _wrap(1, alice, 100);
         vm.prank(alice);
-        fiddy.withdrawFiddy(1, 100, alice);
+        fiddy.withdrawFiddy(1, 100);
         vm.prank(authority);
         fiddy.setFiddyConsumer(alice, true);
         vm.prank(alice);

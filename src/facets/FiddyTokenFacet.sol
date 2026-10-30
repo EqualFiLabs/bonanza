@@ -121,13 +121,13 @@ contract FiddyTokenFacet is ERC20Upgradeable {
         emit FiddyDeposited(id, msg.sender, amount);
     }
 
-    function withdrawFiddy(uint256 id, uint256 amount, address receiver) external guarded {
+    /// @notice Withdraw unstaked account FIDDY to the PositionNFT owner, who is the caller.
+    function withdrawFiddy(uint256 id, uint256 amount) external guarded {
         LibFiddy.enforceOwner(id);
         _positive(amount);
-        _receiver(receiver);
         LibFiddy.debitBalance(id, amount);
-        _move(address(this), receiver, amount);
-        emit FiddyWithdrawn(id, receiver, amount);
+        _move(address(this), msg.sender, amount);
+        emit FiddyWithdrawn(id, msg.sender, amount);
     }
 
     function wrapFiddy(uint256 id, uint256 amount) external guarded {
