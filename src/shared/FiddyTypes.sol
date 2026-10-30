@@ -13,6 +13,7 @@ struct FiddyAccount {
     uint256 weight;
     uint256 operatorId;
     uint256 multiplierBps;
+    uint64 stakeStart; // Unstaking unlocks STAKE_LOCK after this weighted start time.
     bool registered;
     bool attached;
 }

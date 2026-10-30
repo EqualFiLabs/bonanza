@@ -17,4 +17,5 @@ library FiddyErrors {
     error OperatorAlreadyRegistered();
     error AccountNotEmpty();
     error RevenueAssetLimitReached();
+    error StakeLocked(uint256 unlockAt);
 }

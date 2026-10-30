@@ -2,6 +2,8 @@
 pragma solidity 0.8.30;
 
 import { IERC721 } from "openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import { Math } from "openzeppelin-contracts/contracts/utils/math/Math.sol";
+import { SafeCast } from "openzeppelin-contracts/contracts/utils/math/SafeCast.sol";
 import { LibFiddy } from "../libraries/LibFiddy.sol";
 import { LibFiddyStorage } from "../libraries/LibFiddyStorage.sol";
 import { LibFiddyStaking } from "../libraries/LibFiddyStaking.sol";
@@ -16,7 +18,9 @@ import { FiddyErrors } from "../shared/FiddyErrors.sol";
 import { Errors } from "../shared/Errors.sol";
 
 contract FiddyStakingFacet {
-    event FiddyStaked(uint256 indexed positionId, uint256 amount, uint256 weight);
+    event FiddyStaked(
+        uint256 indexed positionId, uint256 amount, uint256 weight, uint256 stakeStart
+    );
     event FiddyUnstaked(uint256 indexed positionId, uint256 amount, uint256 weight);
     event FiddyOperatorRegistered(
         uint256 indexed positionId, uint256 indexed operatorId, uint256 multiplierBps
@@ -55,9 +59,18 @@ contract FiddyStakingFacet {
         FiddyAccount storage a = LibFiddyStorage.state().accounts[id];
         if (amount > a.balance - a.staked) revert FiddyErrors.InsufficientFiddy();
         LibFiddyStaking.checkpointAll(id);
-        a.staked += amount;
+        // Credit time already served by the prior stake, weighted by size and rounded toward a
+        // longer lock, as Statics does for pending reward eligibility.
+        uint256 prior = a.staked;
+        uint256 credit;
+        if (prior != 0) {
+            credit = Math.min(block.timestamp - a.stakeStart, LibFiddyStaking.STAKE_LOCK);
+        }
+        a.stakeStart =
+            SafeCast.toUint64(block.timestamp - Math.mulDiv(prior, credit, prior + amount));
+        a.staked = prior + amount;
         LibFiddyStaking.updateWeight(id);
-        emit FiddyStaked(id, amount, a.weight);
+        emit FiddyStaked(id, amount, a.weight, a.stakeStart);
     }
 
     function unstakeFiddy(uint256 id, uint256 amount) external guarded {
@@ -65,6 +78,8 @@ contract FiddyStakingFacet {
         if (amount == 0) revert Errors.ZeroAmount();
         FiddyAccount storage a = LibFiddyStorage.state().accounts[id];
         if (amount > a.staked) revert FiddyErrors.InsufficientFiddy();
+        uint256 unlockAt = uint256(a.stakeStart) + LibFiddyStaking.STAKE_LOCK;
+        if (block.timestamp < unlockAt) revert FiddyErrors.StakeLocked(unlockAt);
         LibFiddyStaking.checkpointAll(id);
         a.staked -= amount;
         LibFiddyStaking.updateWeight(id);

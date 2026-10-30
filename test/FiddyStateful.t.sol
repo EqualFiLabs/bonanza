@@ -4,6 +4,7 @@ import { FiddyRevenueSetup } from "./FiddyStaking.t.sol";
 import { FiddyAccount, FiddyAsset, FiddyCredit } from "../src/shared/FiddyTypes.sol";
 import { FiddyConfig } from "../src/shared/FiddyTypes.sol";
 import { AssetAccounting } from "../src/shared/Types.sol";
+import { LibFiddyStaking } from "../src/libraries/LibFiddyStaking.sol";
 
 contract FiddyStatefulTest is FiddyRevenueSetup {
     uint256 internal constant RAY = 1e27;
@@ -25,13 +26,16 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
         uint256 id = 1 + seed % 2;
         address owner = positions.ownerOf(id);
         FiddyAccount memory a = fiddyView.fiddyAccount(id);
-        uint256 mode = (seed >> 16) % 10;
+        uint256 mode = (seed >> 16) % 11;
         if (mode == 0) {
             _settle(seed % 2 == 0 ? address(tokenA) : address(tokenB), seed % 3 == 0);
         } else if (mode == 1 && a.balance > a.staked) {
             vm.prank(owner);
             staking.stakeFiddy(id, 1 + seed % (a.balance - a.staked));
-        } else if (mode == 2 && a.staked > 0) {
+        } else if (
+            mode == 2 && a.staked > 0
+                && block.timestamp >= a.stakeStart + LibFiddyStaking.STAKE_LOCK
+        ) {
             vm.prank(owner);
             staking.unstakeFiddy(id, 1 + seed % a.staked);
         } else if (mode == 3) {
@@ -57,6 +61,8 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
             _participate(id, owner, seed % 100 + 1);
         } else if (mode == 9) {
             staking.checkpointFiddyAccount(id);
+        } else if (mode == 10) {
+            skip(seed % 2 days);
         }
     }
 

@@ -87,6 +87,7 @@ contract FiddyStakingTest is FiddyRevenueSetup {
 
     function testMultiAssetClaimAndCompleteAccountLifecycle() public {
         _start();
+        skip(LibFiddyStaking.STAKE_LOCK);
         _settle(address(tokenA), false);
         _settle(address(tokenB), true);
         vm.prank(alice);
@@ -181,6 +182,7 @@ contract FiddyStakingTest is FiddyRevenueSetup {
 
     function testCleanupRequiresWholeClaimsAndSurrendersOnlyFractions() public {
         _start();
+        skip(LibFiddyStaking.STAKE_LOCK);
         _settle(address(tokenA), false);
         _settle(address(tokenB), false);
         vm.prank(alice);

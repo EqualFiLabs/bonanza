@@ -325,6 +325,7 @@ contract FiddyPurchaseRevenueTest is FiddyRevenueSetup {
 
     function testSettlementAndExitsIgnoreStaticsTransferHistory() public {
         _start();
+        skip(LibFiddyStaking.STAKE_LOCK);
         vm.mockCallRevert(
             address(positions),
             abi.encodeWithSelector(IStaticsExternalModules.transferHead.selector),
@@ -374,6 +375,7 @@ contract FiddyPurchaseRevenueTest is FiddyRevenueSetup {
         _wrap(1, alice, 100);
         vm.prank(alice);
         staking.stakeFiddy(1, 100);
+        skip(LibFiddyStaking.STAKE_LOCK);
         positions.mint(mallory, 9);
         operators.mint(mallory, 9);
         _settle(address(tokenB), false);

@@ -11,6 +11,7 @@ library LibFiddyStaking {
     uint256 internal constant RAY = 1e27;
     uint256 internal constant BPS = 10_000;
     uint256 internal constant MAX_REVENUE_ASSETS = 64;
+    uint256 internal constant STAKE_LOCK = 24 hours;
     event FiddyRevenueAssetListed(address indexed asset);
     event FiddyRevenueBooked(
         uint256 indexed roundId,
