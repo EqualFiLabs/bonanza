@@ -31,17 +31,16 @@ library FiddySelectors {
     }
 
     function staking() internal pure returns (bytes4[] memory s) {
-        s = new bytes4[](10);
+        s = new bytes4[](9);
         s[0] = FiddyStakingFacet.setFiddyBoostsEnabled.selector;
         s[1] = FiddyStakingFacet.checkpointFiddyAccount.selector;
-        s[2] = FiddyStakingFacet.processFiddyRevenue.selector;
-        s[3] = FiddyStakingFacet.stakeFiddy.selector;
-        s[4] = FiddyStakingFacet.unstakeFiddy.selector;
-        s[5] = FiddyStakingFacet.registerFiddyOperator.selector;
-        s[6] = FiddyStakingFacet.removeFiddyOperator.selector;
-        s[7] = FiddyStakingFacet.claimFiddyRevenue.selector;
-        s[8] = FiddyStakingFacet.cleanupFiddyAccount.selector;
-        s[9] = FiddyStakingFacet.indexedFiddyRevenue.selector;
+        s[2] = FiddyStakingFacet.stakeFiddy.selector;
+        s[3] = FiddyStakingFacet.unstakeFiddy.selector;
+        s[4] = FiddyStakingFacet.registerFiddyOperator.selector;
+        s[5] = FiddyStakingFacet.removeFiddyOperator.selector;
+        s[6] = FiddyStakingFacet.claimFiddyRevenue.selector;
+        s[7] = FiddyStakingFacet.cleanupFiddyAccount.selector;
+        s[8] = FiddyStakingFacet.indexedFiddyRevenue.selector;
     }
 
     function views() internal pure returns (bytes4[] memory s) {
@@ -54,8 +53,8 @@ library FiddySelectors {
         s[5] = FiddyViewFacet.fiddyAsset.selector;
         s[6] = FiddyViewFacet.fiddyCredit.selector;
         s[7] = FiddyViewFacet.fiddyOperatorAccount.selector;
-        s[8] = FiddyViewFacet.fiddyProcessing.selector;
-        s[9] = FiddyViewFacet.fiddyBatch.selector;
+        s[8] = FiddyViewFacet.fiddyStaking.selector;
+        s[9] = FiddyViewFacet.fiddyRoundRevenue.selector;
         s[10] = FiddyViewFacet.fiddyRevenueAssets.selector;
     }
 }

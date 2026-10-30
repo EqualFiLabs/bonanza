@@ -77,8 +77,6 @@ contract FiddyTokenFacet is ERC20Upgradeable {
         s.positionNFT = positionNFT_;
         s.operators = operators_;
         s.registry = registry_;
-        s.revision = 1;
-        s.transferCursor = IStaticsExternalModules(positionNFT_).transferHead();
         emit FiddyInitialized(underlying_, positionNFT_, operators_, registry_);
     }
 

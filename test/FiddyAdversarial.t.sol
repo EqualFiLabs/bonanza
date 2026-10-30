@@ -43,7 +43,6 @@ contract FiddyAdversarialTest is FiddyRevenueSetup {
         vm.prank(alice);
         asset.approve(address(diamond), type(uint256).max);
         _settle(address(asset), false);
-        staking.processFiddyRevenue(100);
         (uint256 earned,) = staking.indexedFiddyRevenue(1, address(asset));
         uint256 reserved = fiddyView.fiddyAsset(address(asset)).reserved;
         for (uint256 mode = 1; mode <= 3; mode += 2) {
@@ -67,26 +66,23 @@ contract FiddyAdversarialTest is FiddyRevenueSetup {
         assertEq(staking.claimFiddyRevenue(1, address(asset), alice), 0);
     }
 
-    function testNewIndexInvalidatesCheckpointAndLateEntrantCannotClaimPastRevenue() public {
+    function testLateEntrantCannotClaimPastRevenue() public {
         _wrap(1, alice, 100);
         _wrap(2, bob, 100);
         vm.prank(alice);
         staking.stakeFiddy(1, 100);
         _settle(address(tokenB), false);
-        staking.processFiddyRevenue(100);
-        _checkpoint(2);
         vm.prank(bob);
         staking.stakeFiddy(2, 100);
         (uint256 past,) = staking.indexedFiddyRevenue(2, address(tokenB));
         assertEq(past, 0);
-        _checkpoint(1);
+        vm.prank(bob);
+        assertEq(staking.claimFiddyRevenue(2, address(tokenB), bob), 0);
         _settle(address(tokenB), false);
-        staking.processFiddyRevenue(100);
-        vm.prank(alice);
-        vm.expectRevert();
-        staking.unstakeFiddy(1, 1);
         (uint256 current,) = staking.indexedFiddyRevenue(2, address(tokenB));
         assertEq(current, 50);
+        (uint256 first,) = staking.indexedFiddyRevenue(1, address(tokenB));
+        assertEq(first, 150);
     }
 }
 

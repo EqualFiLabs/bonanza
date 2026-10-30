@@ -14,7 +14,7 @@
 No chain deployment, public conversion activation, AMM construction or sibling-repository modification is included. Existing historical proof results do not cover this extension.
 
 - [x] Mint fully backed FIDDY reward inventory at reserve funding, distribute existing units for participation, and protect inventory from surplus without double-counting STATICS backing.
-- [ ] Book staker revenue at purchase and remove the Statics transfer-history dependency.
+- [x] Book staker revenue at purchase and remove the Statics transfer-history dependency.
 - [ ] Lock unstaking for 24 hours with a stake-weighted reset on top-ups.
 - [ ] Validate Operator boosts by direct reads and forfeit invalid boost excess.
 - [ ] Restrict FIDDY payouts and require a consumer Router for FIDDY Operator revenue.

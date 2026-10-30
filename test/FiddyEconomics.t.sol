@@ -8,7 +8,6 @@ contract FiddyEconomicsTest is FiddyRevenueSetup {
         uint256 before = tokenB.balanceOf(alice);
         uint256 roundId = _settle(address(tokenB), false);
         assertEq(stateView.round(roundId).winner, alice);
-        staking.processFiddyRevenue(100);
         vm.prank(alice);
         uint256 prize = claims.claimWinner(roundId, alice);
         vm.prank(alice);
@@ -32,7 +31,6 @@ contract FiddyEconomicsTest is FiddyRevenueSetup {
         vm.prank(alice);
         staking.stakeFiddy(1, 100);
         uint256 roundId = _settle(address(tokenB), false);
-        staking.processFiddyRevenue(100);
         vm.prank(alice);
         uint256 prize = claims.claimWinner(roundId, alice);
         vm.prank(alice);

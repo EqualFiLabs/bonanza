@@ -48,9 +48,7 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         fiddy.initializeFiddy(underlying, position, ops, registry_);
     }
 
-    function testActualCandidateLifecycleAndOrderedRoundTrip() public {
-        assertTrue(core.historyCoverage(address(core)).ready);
-        assertTrue(core.historyCoverage(address(actualOperators)).ready);
+    function testActualCandidateLifecycleAndPositionSale() public {
         vm.prank(authority);
         fiddy.setFiddyConversions(true, false, 100 ether);
         vm.startPrank(alice);
@@ -77,18 +75,8 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         fiddy.fundFiddyReserve(2 ether);
         uint256 soldOut = _fundedRound(address(tokenB), false);
         uint256 deadline = _fundedRound(address(statics), true);
-        uint256 head = core.transferHead();
-        vm.prank(alice);
-        actualOperators.transferFrom(alice, bob, 1);
-        vm.prank(bob);
-        actualOperators.transferFrom(bob, alice, 1);
-        assertEq(core.transferHead(), head + 2);
-        staking.processFiddyRevenue(100);
-        assertEq(fiddyView.fiddyAccount(positionId).weight, 100 ether);
-        assertEq(fiddyView.fiddyOperatorAccount(1), 0);
         vm.prank(alice);
         IERC721(address(core)).transferFrom(alice, bob, positionId);
-        staking.processFiddyRevenue(100);
         vm.prank(alice);
         vm.expectRevert(FiddyErrors.NotPositionOwner.selector);
         fiddy.withdrawFiddy(positionId, 1, alice);
@@ -107,7 +95,7 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         vm.prank(round.winner);
         claims.claimWinner(deadline, round.winner);
         vm.prank(bob);
-        assertTrue(staking.cleanupFiddyAccount(positionId, 100));
+        staking.cleanupFiddyAccount(positionId);
         assertEq(core.externalLegCount(positionId), 0);
         vm.prank(bob);
         IPositionClosure(address(core)).closePosition(positionId);

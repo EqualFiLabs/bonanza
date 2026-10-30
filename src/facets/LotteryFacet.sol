@@ -6,6 +6,7 @@ import { SafeCast } from "openzeppelin-contracts/contracts/utils/math/SafeCast.s
 import { IEqualFiDrandRegistry } from "../interfaces/IEqualFiDrandRegistry.sol";
 import { ILottery } from "../interfaces/ILottery.sol";
 import { LibFiddy } from "../libraries/LibFiddy.sol";
+import { LibFiddyStaking } from "../libraries/LibFiddyStaking.sol";
 import { LibFiddyStorage } from "../libraries/LibFiddyStorage.sol";
 import { LibExactToken } from "../libraries/LibExactToken.sol";
 import { LibLotteryConfig } from "../libraries/LibLotteryConfig.sol";
@@ -151,9 +152,12 @@ contract LotteryFacet is ILottery {
         round.receipts += amount;
         TicketRange[] storage entries = gs.entries[roundId];
         LibTicketRanges.append(entries, msg.sender, endExclusive);
+        // Sales are final, so the staker share is booked now and leaves round escrow.
+        uint256 stakerShare =
+            LibFiddyStaking.book(roundId, paymentToken, amount, round.config.winnerBps);
         LibLotteryStorage.accountingStorage()
                 .assetAccounting[paymentToken]
-                .activeRoundEscrow += amount;
+                .activeRoundEscrow += amount - stakerShare;
 
         LibFiddy.issue(roundId, positionId, ticketQuantity);
         LibExactToken.pullExact(paymentToken, msg.sender, amount);

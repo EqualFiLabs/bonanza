@@ -13,11 +13,8 @@ library FiddyErrors {
     error InsufficientFiddy();
     error InvalidRewardsConfig();
     error PositionRequired();
-    error SynchronizationRequired();
-    error AccountCheckpointRequired();
-    error InvalidWorkLimit();
     error InvalidRegistration();
     error OperatorAlreadyRegistered();
-    error HistoryUnavailable();
     error AccountNotEmpty();
+    error RevenueAssetLimitReached();
 }

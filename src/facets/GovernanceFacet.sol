@@ -3,6 +3,7 @@ pragma solidity 0.8.30;
 
 import { IGovernance } from "../interfaces/IGovernance.sol";
 import { LibFiddy } from "../libraries/LibFiddy.sol";
+import { LibFiddyStaking } from "../libraries/LibFiddyStaking.sol";
 import { LibFiddyStorage } from "../libraries/LibFiddyStorage.sol";
 import { FiddyConfig } from "../shared/FiddyTypes.sol";
 import { FiddyErrors } from "../shared/FiddyErrors.sol";
@@ -38,6 +39,7 @@ contract GovernanceFacet is IGovernance {
         ) revert FiddyErrors.InvalidRewardsConfig();
         version = _createConfig(config);
         LibFiddyStorage.state().configs[version] = rewards;
+        if (rewards.stakerProtocolBps != 0) LibFiddyStaking.list(config.paymentToken);
         emit FiddyConfigCreated(version, rewards);
     }
 

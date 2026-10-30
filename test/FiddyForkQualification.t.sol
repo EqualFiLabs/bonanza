@@ -36,27 +36,20 @@ contract FiddyForkQualificationTest is FiddySetup {
         fiddy.initializeFiddy(underlying, position, ops, registry_);
     }
 
-    function testForkActualHandoffAndFiddyRegistrationInvalidation() public {
+    function testForkActualRegistrationAndCleanup() public {
         assertEq(block.number, 26_303_058); // L1 NUMBER at pinned L2 block 101439372
-        assertTrue(core.historyCoverage(address(liveOperators)).ready);
         vm.prank(authority);
         staking.setFiddyBoostsEnabled(true);
         address owner = liveOperators.ownerOf(3);
         vm.prank(owner);
         staking.registerFiddyOperator(positionId, 3);
         assertTrue(fiddyView.fiddyAccount(positionId).registered);
+        assertEq(fiddyView.fiddyOperatorAccount(3), positionId);
         assertEq(core.externalLegCount(positionId), 1);
-        uint256 head = core.transferHead();
         vm.prank(owner);
-        liveOperators.transferFrom(owner, alice, 3);
-        vm.prank(alice);
-        liveOperators.transferFrom(alice, owner, 3);
-        assertEq(core.transferHead(), head + 2);
-        staking.processFiddyRevenue(100);
+        staking.cleanupFiddyAccount(positionId);
         assertFalse(fiddyView.fiddyAccount(positionId).registered);
         assertEq(fiddyView.fiddyOperatorAccount(3), 0);
-        vm.prank(owner);
-        assertTrue(staking.cleanupFiddyAccount(positionId, 100));
         assertEq(core.externalLegCount(positionId), 0);
     }
 }

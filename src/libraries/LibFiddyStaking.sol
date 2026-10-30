@@ -2,24 +2,68 @@
 pragma solidity 0.8.30;
 
 import { Math } from "openzeppelin-contracts/contracts/utils/math/Math.sol";
-import { IStaticsExternalModules } from "../interfaces/IStaticsExternalModules.sol";
 import { LibFiddyStorage } from "./LibFiddyStorage.sol";
 import { LibLotteryStorage } from "./LibLotteryStorage.sol";
-import { FiddyAccount, FiddyAsset, FiddyCredit, FiddyBatch } from "../shared/FiddyTypes.sol";
+import { FiddyAccount, FiddyAsset, FiddyCredit } from "../shared/FiddyTypes.sol";
 import { FiddyErrors } from "../shared/FiddyErrors.sol";
 
 library LibFiddyStaking {
     uint256 internal constant RAY = 1e27;
-    event FiddyRevenueIndexed(
-        address indexed asset, uint256 amount, uint256 weight, uint256 indexRay
+    uint256 internal constant BPS = 10_000;
+    uint256 internal constant MAX_REVENUE_ASSETS = 64;
+    event FiddyRevenueAssetListed(address indexed asset);
+    event FiddyRevenueBooked(
+        uint256 indexed roundId,
+        address indexed asset,
+        uint256 amount,
+        uint256 totalWeight,
+        uint256 indexRay
     );
-    event FiddyBoostInvalidated(
-        uint256 indexed positionId, uint256 indexed operatorId, uint256 sequence
-    );
-    event FiddyZeroWeightRevenue(address indexed asset, uint256 amount);
+    event FiddyZeroWeightRevenue(uint256 indexed roundId, address indexed asset, uint256 amount);
 
-    function workLimit(uint256 limit) internal pure {
-        if (limit == 0 || limit > 100) revert FiddyErrors.InvalidWorkLimit();
+    /// @dev One floor per purchase. Summed over purchases this never exceeds the protocol
+    /// remainder after the Operator share when Operator and staker BPS sum to at most BPS.
+    function stakerShare(uint256 amount, uint16 winnerBps, uint16 stakerProtocolBps)
+        internal
+        pure
+        returns (uint256)
+    {
+        return amount * (BPS - winnerBps) * stakerProtocolBps / (BPS * BPS);
+    }
+
+    /// @dev Listing is bounded and never loops over configurations.
+    function list(address asset) internal {
+        LibFiddyStorage.State storage s = LibFiddyStorage.state();
+        FiddyAsset storage revenue = s.assets[asset];
+        if (revenue.listed) return;
+        if (s.revenueAssets.length == MAX_REVENUE_ASSETS) {
+            revert FiddyErrors.RevenueAssetLimitReached();
+        }
+        revenue.listed = true;
+        s.revenueAssets.push(asset);
+        emit FiddyRevenueAssetListed(asset);
+    }
+
+    /// @notice Books the staker share of one final ticket purchase against the current weight.
+    function book(uint256 roundId, address asset, uint256 amount, uint16 winnerBps)
+        internal
+        returns (uint256 share)
+    {
+        LibFiddyStorage.State storage s = LibFiddyStorage.state();
+        share = stakerShare(amount, winnerBps, s.rounds[roundId].stakerProtocolBps);
+        if (share == 0) return 0;
+        s.stakerAccrued[roundId] += share;
+        uint256 weight = s.totalWeight;
+        if (weight == 0) {
+            LibLotteryStorage.accountingStorage().assetAccounting[asset].treasuryAvailable += share;
+            emit FiddyZeroWeightRevenue(roundId, asset, share);
+        } else {
+            FiddyAsset storage revenue = s.assets[asset];
+            revenue.reserved += share;
+            revenue.indexRay += Math.mulDiv(share, RAY, weight);
+            dust(asset, mulmod(share, RAY, weight));
+            emit FiddyRevenueBooked(roundId, asset, share, weight, revenue.indexRay);
+        }
     }
 
     function accrued(uint256 id, address asset)
@@ -44,40 +88,19 @@ library LibFiddyStaking {
         c.paidIndex = s.assets[asset].indexRay;
     }
 
-    function prepare(uint256 id, uint256 limit) internal {
-        workLimit(limit);
-        LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        FiddyAccount storage a = s.accounts[id];
-        if (a.checkpointRevision != s.revision) {
-            a.checkpointRevision = s.revision;
-            a.checkpointCursor = 0;
-        }
-        uint256 stop = a.checkpointCursor + limit;
-        if (stop > s.revenueAssets.length) stop = s.revenueAssets.length;
-        while (a.checkpointCursor < stop) checkpoint(id, s.revenueAssets[a.checkpointCursor++]);
-    }
-
-    function enforceSynchronized() internal view {
-        LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        if (
-            s.transferAccount != 0 || s.batchCursor != s.batches.length
-                || s.transferCursor != IStaticsExternalModules(s.positionNFT).transferHead()
-        ) revert FiddyErrors.SynchronizationRequired();
-    }
-
-    function enforceCheckpoint(uint256 id) internal view {
-        LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        if (s.revenueAssets.length == 0) return;
-        FiddyAccount storage a = s.accounts[id];
-        if (a.checkpointRevision != s.revision || a.checkpointCursor != s.revenueAssets.length) {
-            revert FiddyErrors.AccountCheckpointRequired();
+    /// @dev Complete in one call; listing is capped at MAX_REVENUE_ASSETS.
+    function checkpointAll(uint256 id) internal {
+        address[] storage assets = LibFiddyStorage.state().revenueAssets;
+        uint256 count = assets.length;
+        for (uint256 i; i < count; ++i) {
+            checkpoint(id, assets[i]);
         }
     }
 
     function updateWeight(uint256 id) internal {
         LibFiddyStorage.State storage s = LibFiddyStorage.state();
         FiddyAccount storage a = s.accounts[id];
-        uint256 weight = Math.mulDiv(a.staked, a.registered ? a.multiplierBps : 10_000, 10_000);
+        uint256 weight = Math.mulDiv(a.staked, a.registered ? a.multiplierBps : BPS, BPS);
         s.totalWeight = s.totalWeight - a.weight + weight;
         a.weight = weight;
     }
@@ -88,110 +111,20 @@ library LibFiddyStaking {
         if (a.registered) delete s.operatorAccount[a.operatorId];
         a.registered = false;
         a.operatorId = 0;
-        a.multiplierBps = 10_000;
-        a.positionSequence = 0;
-        a.operatorSequence = 0;
+        a.multiplierBps = BPS;
     }
 
     function dust(address asset, uint256 scaled) internal {
         LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        FiddyAsset storage book = s.assets[asset];
+        FiddyAsset storage revenue = s.assets[asset];
         // Consume whole dust immediately so accumulated scaled values remain bounded.
         uint256 whole = scaled / RAY;
-        uint256 fraction = book.dustRay + scaled % RAY;
+        uint256 fraction = revenue.dustRay + scaled % RAY;
         whole += fraction / RAY;
-        book.dustRay = fraction % RAY;
+        revenue.dustRay = fraction % RAY;
         if (whole != 0) {
-            book.reserved -= whole;
+            revenue.reserved -= whole;
             LibLotteryStorage.accountingStorage().assetAccounting[asset].treasuryAvailable += whole;
         }
-    }
-
-    function process(uint256 maxWork) internal returns (uint256 used) {
-        workLimit(maxWork);
-        LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        IStaticsExternalModules core = IStaticsExternalModules(s.positionNFT);
-        // Each iteration handles one transfer, one asset checkpoint, one completed
-        // invalidation, or one funded batch. No loop depends on all stakers.
-        while (used < maxWork) {
-            if (s.transferAccount != 0) {
-                _continueTransfer();
-            } else {
-                bool queued = s.batchCursor < s.batches.length;
-                uint256 boundary = queued ? s.batches[s.batchCursor].boundary : core.transferHead();
-                if (s.transferCursor < boundary) {
-                    (IStaticsExternalModules.TransferChange[] memory changes, uint256 next) =
-                        core.transferChanges(s.transferCursor, 1);
-                    if (changes.length != 1 || next != s.transferCursor + 1) {
-                        revert FiddyErrors.HistoryUnavailable();
-                    }
-                    _beginTransfer(changes[0], next);
-                } else if (queued) {
-                    _indexBatch(s.batches[s.batchCursor++]);
-                } else {
-                    break;
-                }
-            }
-            ++used;
-        }
-    }
-
-    function _beginTransfer(IStaticsExternalModules.TransferChange memory change, uint256 sequence)
-        private
-    {
-        LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        uint256 id;
-        if (change.collection == s.positionNFT) id = change.tokenId;
-        else if (change.collection == s.operators) id = s.operatorAccount[change.tokenId];
-        FiddyAccount storage a = s.accounts[id];
-        uint256 marker =
-            change.collection == s.positionNFT ? a.positionSequence : a.operatorSequence;
-        if (id != 0 && a.registered && sequence > marker) {
-            s.transferAccount = id;
-            s.transferAssetCursor = 0;
-        } else {
-            s.transferCursor = sequence;
-        }
-    }
-
-    function _continueTransfer() private {
-        LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        uint256 id = s.transferAccount;
-        if (s.transferAssetCursor < s.revenueAssets.length) {
-            checkpoint(id, s.revenueAssets[s.transferAssetCursor++]);
-        } else {
-            uint256 operatorId = s.accounts[id].operatorId;
-            clearRegistration(id);
-            updateWeight(id);
-            s.accounts[id].checkpointRevision = s.revision;
-            s.accounts[id].checkpointCursor = s.revenueAssets.length;
-            s.transferAccount = 0;
-            s.transferAssetCursor = 0;
-            ++s.transferCursor;
-            emit FiddyBoostInvalidated(id, operatorId, s.transferCursor);
-        }
-    }
-
-    function _indexBatch(FiddyBatch storage batch) private {
-        LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        address asset = batch.asset;
-        FiddyAsset storage book = s.assets[asset];
-        book.pending -= batch.amount;
-        if (!book.listed) {
-            book.listed = true;
-            s.revenueAssets.push(asset);
-        }
-        if (s.totalWeight == 0) {
-            book.reserved -= batch.amount;
-            LibLotteryStorage.accountingStorage()
-                .assetAccounting[asset]
-                .treasuryAvailable += batch.amount;
-            emit FiddyZeroWeightRevenue(asset, batch.amount);
-        } else {
-            book.indexRay += Math.mulDiv(batch.amount, RAY, s.totalWeight);
-            dust(asset, mulmod(batch.amount, RAY, s.totalWeight));
-            emit FiddyRevenueIndexed(asset, batch.amount, s.totalWeight, book.indexRay);
-        }
-        ++s.revision;
     }
 }

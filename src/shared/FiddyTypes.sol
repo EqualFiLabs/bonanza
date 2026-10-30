@@ -13,11 +13,6 @@ struct FiddyAccount {
     uint256 weight;
     uint256 operatorId;
     uint256 multiplierBps;
-    uint256 positionSequence;
-    uint256 operatorSequence;
-    uint256 checkpointRevision;
-    uint256 checkpointCursor;
-    uint256 cleanupCursor;
     bool registered;
     bool attached;
 }
@@ -25,7 +20,6 @@ struct FiddyAccount {
 struct FiddyAsset {
     uint256 indexRay;
     uint256 reserved;
-    uint256 pending;
     uint256 dustRay;
     bool listed;
 }
@@ -34,10 +28,4 @@ struct FiddyCredit {
     uint256 paidIndex;
     uint256 claimable;
     uint256 remainderRay;
-}
-
-struct FiddyBatch {
-    address asset;
-    uint256 amount;
-    uint256 boundary;
 }

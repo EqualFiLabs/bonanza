@@ -33,32 +33,28 @@ contract FiddyStakingFacet {
         LibReentrancy.exit();
     }
 
+    /// @notice Gates new registrations only; existing boosts are validated at checkpoints.
     function setFiddyBoostsEnabled(bool enabled) external {
         LibDiamond.enforceAuthority();
         LibFiddy.enforceInitialized();
-        if (enabled) LibFiddy.enforceHistory();
         LibFiddyStorage.state().boostsEnabled = enabled;
         emit FiddyBoostsEnabled(enabled);
     }
 
-    function checkpointFiddyAccount(uint256 id, uint256 maxAssets) external guarded {
+    /// @notice Permissionlessly books an account's accrued revenue across every listed asset.
+    function checkpointFiddyAccount(uint256 id) external guarded {
         LibFiddy.enforceInitialized();
         IERC721(LibFiddyStorage.state().positionNFT).ownerOf(id);
-        LibFiddyStaking.prepare(id, maxAssets);
-    }
-
-    function processFiddyRevenue(uint256 maxWork) external guarded returns (uint256) {
-        LibFiddy.enforceInitialized();
-        return LibFiddyStaking.process(maxWork);
+        LibFiddyStaking.checkpointAll(id);
     }
 
     function stakeFiddy(uint256 id, uint256 amount) external guarded {
         LibFiddy.enforceOwner(id);
         _active();
-        _ready(id);
         if (amount == 0) revert Errors.ZeroAmount();
         FiddyAccount storage a = LibFiddyStorage.state().accounts[id];
         if (amount > a.balance - a.staked) revert FiddyErrors.InsufficientFiddy();
+        LibFiddyStaking.checkpointAll(id);
         a.staked += amount;
         LibFiddyStaking.updateWeight(id);
         emit FiddyStaked(id, amount, a.weight);
@@ -66,23 +62,21 @@ contract FiddyStakingFacet {
 
     function unstakeFiddy(uint256 id, uint256 amount) external guarded {
         LibFiddy.enforceOwner(id);
-        _ready(id);
         if (amount == 0) revert Errors.ZeroAmount();
         FiddyAccount storage a = LibFiddyStorage.state().accounts[id];
         if (amount > a.staked) revert FiddyErrors.InsufficientFiddy();
+        LibFiddyStaking.checkpointAll(id);
         a.staked -= amount;
         LibFiddyStaking.updateWeight(id);
         emit FiddyUnstaked(id, amount, a.weight);
     }
 
-    /// @notice Register, switch or explicitly refresh after all prior funding is processed.
+    /// @notice Register, switch or explicitly refresh the boost from a caller-owned Operator.
     function registerFiddyOperator(uint256 id, uint256 operatorId) external guarded {
         LibFiddy.enforceOwner(id);
         _active();
-        _ready(id);
         LibFiddyStorage.State storage s = LibFiddyStorage.state();
         if (!s.boostsEnabled) revert FiddyErrors.InvalidRegistration();
-        LibFiddy.enforceHistory();
         if (IERC721(s.operators).ownerOf(operatorId) != msg.sender) {
             revert FiddyErrors.InvalidRegistration();
         }
@@ -91,22 +85,20 @@ contract FiddyStakingFacet {
         uint256 multiplier = IFiddyActivation(s.registry).multiplierBps(operatorId);
         if (multiplier < 10_000 || multiplier > 12_500) revert FiddyErrors.InvalidRegistration();
         LibFiddy.attach(id);
+        LibFiddyStaking.checkpointAll(id);
         LibFiddyStaking.clearRegistration(id);
         FiddyAccount storage a = s.accounts[id];
         a.registered = true;
         a.operatorId = operatorId;
         a.multiplierBps = multiplier;
         s.operatorAccount[operatorId] = id;
-        IStaticsExternalModules core = IStaticsExternalModules(s.positionNFT);
-        a.positionSequence = core.transferState(s.positionNFT, id).lastSequence;
-        a.operatorSequence = core.transferState(s.operators, operatorId).lastSequence;
         LibFiddyStaking.updateWeight(id);
         emit FiddyOperatorRegistered(id, operatorId, multiplier);
     }
 
     function removeFiddyOperator(uint256 id) external guarded {
         LibFiddy.enforceOwner(id);
-        _ready(id);
+        LibFiddyStaking.checkpointAll(id);
         LibFiddyStaking.clearRegistration(id);
         LibFiddyStaking.updateWeight(id);
         emit FiddyOperatorRemoved(id);
@@ -119,7 +111,7 @@ contract FiddyStakingFacet {
     {
         LibFiddy.enforceOwner(id);
         if (receiver == address(0) || receiver == address(this)) revert Errors.InvalidAddress();
-        LibFiddyStaking.checkpoint(id, asset);
+        LibFiddyStaking.checkpointAll(id);
         LibFiddyStorage.State storage s = LibFiddyStorage.state();
         FiddyCredit storage c = s.credits[id][asset];
         amount = c.claimable;
@@ -131,37 +123,28 @@ contract FiddyStakingFacet {
     }
 
     /// @notice Detach an empty account; explicitly surrender only sub-unit revenue dust.
-    function cleanupFiddyAccount(uint256 id, uint256 maxAssets)
-        external
-        guarded
-        returns (bool closed)
-    {
+    function cleanupFiddyAccount(uint256 id) external guarded {
         LibFiddy.enforceOwner(id);
-        _ready(id);
-        LibFiddyStaking.workLimit(maxAssets);
         LibFiddyStorage.State storage s = LibFiddyStorage.state();
         FiddyAccount storage a = s.accounts[id];
         if (a.balance != 0 || a.staked != 0) revert FiddyErrors.AccountNotEmpty();
-        uint256 stop = a.cleanupCursor + maxAssets;
-        if (stop > s.revenueAssets.length) stop = s.revenueAssets.length;
-        while (a.cleanupCursor < stop) {
-            address asset = s.revenueAssets[a.cleanupCursor++];
+        LibFiddyStaking.checkpointAll(id);
+        uint256 count = s.revenueAssets.length;
+        for (uint256 i; i < count; ++i) {
+            address asset = s.revenueAssets[i];
             FiddyCredit storage c = s.credits[id][asset];
             if (c.claimable != 0) revert FiddyErrors.AccountNotEmpty();
             uint256 fraction = c.remainderRay;
             c.remainderRay = 0;
             LibFiddyStaking.dust(asset, fraction);
         }
-        if (a.cleanupCursor == s.revenueAssets.length) {
-            LibFiddyStaking.clearRegistration(id);
-            if (a.attached) {
-                a.attached = false;
-                IStaticsExternalModules(s.positionNFT)
-                    .detachExternalAccountLeg(id, LibFiddy.MODULE, bytes32(id));
-            }
-            emit FiddyAccountClosed(id);
-            return true;
+        LibFiddyStaking.clearRegistration(id);
+        if (a.attached) {
+            a.attached = false;
+            IStaticsExternalModules(s.positionNFT)
+                .detachExternalAccountLeg(id, LibFiddy.MODULE, bytes32(id));
         }
+        emit FiddyAccountClosed(id);
     }
 
     function indexedFiddyRevenue(uint256 id, address asset)
@@ -170,11 +153,6 @@ contract FiddyStakingFacet {
         returns (uint256 amount, uint256 remainderRay)
     {
         return LibFiddyStaking.accrued(id, asset);
-    }
-
-    function _ready(uint256 id) private view {
-        LibFiddyStaking.enforceSynchronized();
-        LibFiddyStaking.enforceCheckpoint(id);
     }
 
     function _active() private view {

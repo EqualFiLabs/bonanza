@@ -2,13 +2,7 @@
 pragma solidity 0.8.30;
 
 import { LibFiddyStorage } from "../libraries/LibFiddyStorage.sol";
-import {
-    FiddyConfig,
-    FiddyAccount,
-    FiddyAsset,
-    FiddyCredit,
-    FiddyBatch
-} from "../shared/FiddyTypes.sol";
+import { FiddyConfig, FiddyAccount, FiddyAsset, FiddyCredit } from "../shared/FiddyTypes.sol";
 
 contract FiddyViewFacet {
     function fiddyBindings()
@@ -69,50 +63,21 @@ contract FiddyViewFacet {
         return LibFiddyStorage.state().operatorAccount[operatorId];
     }
 
-    function fiddyProcessing()
+    function fiddyStaking()
         external
         view
-        returns (
-            uint256 transferCursor,
-            uint256 nextBatch,
-            uint256 batchCount,
-            uint256 transferAccount,
-            uint256 assetCursor,
-            uint256 totalWeight,
-            uint256 revision,
-            bool boostsEnabled
-        )
+        returns (uint256 totalWeight, bool boostsEnabled, uint256 revenueAssetCount)
     {
         LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        return (
-            s.transferCursor,
-            s.batchCursor,
-            s.batches.length,
-            s.transferAccount,
-            s.transferAssetCursor,
-            s.totalWeight,
-            s.revision,
-            s.boostsEnabled
-        );
+        return (s.totalWeight, s.boostsEnabled, s.revenueAssets.length);
     }
 
-    function fiddyBatch(uint256 index) external view returns (FiddyBatch memory) {
-        return LibFiddyStorage.state().batches[index];
+    /// @notice Staker revenue booked by a round's purchases.
+    function fiddyRoundRevenue(uint256 roundId) external view returns (uint256) {
+        return LibFiddyStorage.state().stakerAccrued[roundId];
     }
 
-    function fiddyRevenueAssets(uint256 cursor, uint256 limit)
-        external
-        view
-        returns (address[] memory assets, uint256 next)
-    {
-        LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        if (limit > 100) limit = 100;
-        if (cursor > s.revenueAssets.length) cursor = s.revenueAssets.length;
-        next = cursor + limit;
-        if (next > s.revenueAssets.length) next = s.revenueAssets.length;
-        assets = new address[](next - cursor);
-        for (uint256 i; cursor < next; ++cursor) {
-            assets[i++] = s.revenueAssets[cursor];
-        }
+    function fiddyRevenueAssets() external view returns (address[] memory) {
+        return LibFiddyStorage.state().revenueAssets;
     }
 }

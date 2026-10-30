@@ -5,7 +5,6 @@ import { SafeCast } from "openzeppelin-contracts/contracts/utils/math/SafeCast.s
 
 import { IEqualFiDrandRegistry } from "../interfaces/IEqualFiDrandRegistry.sol";
 import { ISettlement } from "../interfaces/ISettlement.sol";
-import { LibFiddy } from "../libraries/LibFiddy.sol";
 import { LibFiddyStorage } from "../libraries/LibFiddyStorage.sol";
 import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
 import { LibReentrancy } from "../libraries/LibReentrancy.sol";
@@ -52,7 +51,6 @@ contract SettlementFacet is ISettlement {
         winner = LibTicketRanges.ownerOfTicket(gs.entries[roundId], winningTicket);
         SettlementAmounts memory amounts = _allocate(round, roundId);
 
-        LibFiddy.reserve(roundId, round.config.paymentToken, amounts.staker);
         _recordSettlement(gs, round, winningTicket, winner, applicationSeed, amounts);
 
         emit RoundSettled(
@@ -67,6 +65,9 @@ contract SettlementFacet is ISettlement {
             amounts.treasury,
             amounts.finalizer
         );
+        if (amounts.staker != 0) {
+            emit StakerRevenueSettled(roundId, round.config.paymentToken, amounts.staker);
+        }
     }
 
     function _acquireApplicationSeed(
@@ -106,7 +107,7 @@ contract SettlementFacet is ISettlement {
             round.receipts.toUint128(),
             round.config.winnerBps,
             round.config.operatorProtocolBps,
-            LibFiddyStorage.state().rounds[roundId].stakerProtocolBps,
+            LibFiddyStorage.state().stakerAccrued[roundId],
             round.config.finalizerTip
         );
     }
@@ -115,21 +116,24 @@ contract SettlementFacet is ISettlement {
         uint128 gross,
         uint16 winnerBps,
         uint16 operatorProtocolBps,
-        uint16 stakerProtocolBps,
+        uint256 stakerAccrued,
         uint96 finalizerTip
     ) internal pure returns (SettlementAmounts memory amounts) {
-        // Reachable receipts are bounded by uint96 ticket price * uint32 ticket count. Config
-        // validation caps winner BPS and the combined Operator/staker BPS at the denominator. Under those invariants every
-        // multiplication and subtraction below is safe; the live caller checks the gross cast.
+        uint256 protocolAmount;
+        // Reachable receipts are bounded by uint96 ticket price * uint32 ticket count, and config
+        // validation caps winner and Operator BPS at the denominator, so these steps cannot wrap.
+        // The live caller checks the gross cast.
         unchecked {
             amounts.winner = uint256(gross) * winnerBps / BPS_DENOMINATOR;
-            uint256 protocolAmount = uint256(gross) - amounts.winner;
+            protocolAmount = uint256(gross) - amounts.winner;
             amounts.operator = protocolAmount * operatorProtocolBps / BPS_DENOMINATOR;
-            amounts.staker = protocolAmount * stakerProtocolBps / BPS_DENOMINATOR;
-            uint256 treasuryGross = protocolAmount - amounts.operator - amounts.staker;
-            amounts.finalizer = finalizerTip < treasuryGross ? finalizerTip : treasuryGross;
-            amounts.treasury = treasuryGross - amounts.finalizer;
         }
+        // Purchase-time staker floors sum to at most protocolAmount - operator whenever Operator
+        // and staker BPS sum to at most the denominator. Checked arithmetic fails closed.
+        amounts.staker = stakerAccrued;
+        uint256 treasuryGross = protocolAmount - amounts.operator - stakerAccrued;
+        amounts.finalizer = finalizerTip < treasuryGross ? finalizerTip : treasuryGross;
+        amounts.treasury = treasuryGross - amounts.finalizer;
     }
 
     function _recordSettlement(
@@ -153,7 +157,7 @@ contract SettlementFacet is ISettlement {
         LibLotteryStorage.AccountingStorage storage accountingStorage =
             LibLotteryStorage.accountingStorage();
         AssetAccounting storage accounting = accountingStorage.assetAccounting[paymentToken];
-        accounting.activeRoundEscrow -= round.receipts;
+        accounting.activeRoundEscrow -= round.receipts - amounts.staker;
         accounting.winnerLiability += amounts.winner;
         accountingStorage.pendingOperatorRevenue[
             round.integrationVersion
