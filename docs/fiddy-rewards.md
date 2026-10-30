@@ -12,12 +12,21 @@ remains available with public conversions disabled and grants the funder no with
 
 Ordinary transfers require either endpoint to be an explicitly approved consumer.
 There is no implicit governance exemption. Exact protocol movements handle account
-deposits/withdrawals; raw transfers into custody do not credit accounts. External
-FIDDY can be deposited into an owned PositionNFT and unstaked account FIDDY can
-be withdrawn. Approval does not confer account authority. Consumer approval
-does not confer mint, redemption or reserve authority. Revocation affects future
-ordinary transfers; consumers are trusted integration contracts and must not
-trap their users' holdings. No AMM is installed by this extension.
+deposits and withdrawals; raw transfers into custody do not credit accounts. External
+FIDDY can be deposited into an owned PositionNFT. Unstaked account FIDDY can be withdrawn
+only to the current PositionNFT owner, who is the caller. Approval does not confer account
+authority. Consumer approval does not confer mint, redemption or reserve authority.
+Revocation affects future ordinary transfers; consumers are trusted integration contracts
+and must not trap their users' holdings. No AMM is installed by this extension.
+
+Every protocol payout of FIDDY as a Payment Token or revenue asset goes to the caller or to
+the governance Treasury recipient. This covers winner claims, finalizer-tip claims, staker
+revenue claims and Treasury delivery. Other Payment Tokens keep their arbitrary receiver
+semantics. Unwrapping pays STATICS and keeps its receiver parameter.
+
+Selling the PositionNFT is the only sanctioned route for FIDDY to change hands outside
+approved consumers. Account balance, stake, stake lock, registration and accrued revenue all
+follow the PositionNFT.
 
 Wrap and unwrap launch independently disabled, with zero public wrap cap. When
 explicitly enabled, wrapping pulls exact STATICS, credits an owned account and
@@ -34,97 +43,218 @@ reserved historical slots keep their layout. Missing settings mean no rewards.
 New reward configurations require explicit rates/splits and start disabled.
 The 50% winner baseline remains; no illustrative staker split is a launch choice.
 
-Winner = floor(gross * winnerBps / 10000). Operators and stakers each receive
-their configured percentage of the protocol remainder; their BPS sum cannot
-exceed 10000. Treasury receives the remainder, with the finalizer tip capped
-by that Treasury allocation. Existing rounds retain their original economics.
+Creating a reward configuration with a nonzero staker share lists its Payment Token as a
+revenue asset if it is not already listed. At most 64 revenue assets can ever be listed;
+the 65th distinct asset reverts `RevenueAssetLimitReached`. Listing never loops over
+configurations, and an asset is always listed before its revenue index can first move.
+
+A configuration priced in FIDDY with a nonzero Operator share is rejected unless the current
+integration's Operator Fee Router is an approved FIDDY consumer, because the Router must be
+able to pay Operators. The same rule is checked again before opening and before every Router
+funding attempt; funding stays retryable and FIDDY waits in the Lottery until it passes.
+FIDDY as a Payment Token is not planned for launch.
+
 Both opening (including its initial purchase) and later buying accept explicit
 PositionNFT selection. Reward-enabled configurations cannot use accountless
-entrypoints. Tickets/winner claims remain wallet-owned under existing semantics.
+entrypoints. Tickets and winner claims remain wallet-owned under existing semantics.
+Participation has no buyer-side minimum issuance. A buyer can receive zero FIDDY when
+inventory is exhausted. A minimum can be added with a facet cut before finalization.
+
+## Revenue allocation
+
+Ticket sales are final; there is no refund or cancellation path. The staker share of each
+purchase is therefore known when the purchase is made, and it is booked immediately with
+one rounding step:
+
+```text
+share = amount * (10000 - winnerBps) * stakerProtocolBps / 100000000
+```
+
+`winnerBps` comes from the round's configuration snapshot and `stakerProtocolBps` from its
+FIDDY snapshot. Every purchase path books the share: `openRound`, `openRoundForPosition`,
+`buyTickets` and `buyTicketsForPosition`. The purchase adds `amount - share` to round escrow
+and records `share` against the round. When total stake weight is positive, the share is
+reserved and added to the asset's revenue index; division dust follows the dust rule below.
+When total weight is zero, the share goes to Treasury and emits `FiddyZeroWeightRevenue`.
+Otherwise `FiddyRevenueBooked` reports the round, asset, amount, total weight and new index.
+
+Settlement computes the winner, Operator and finalizer amounts from aggregate receipts:
+
+```text
+winner    = floor(receipts * winnerBps / 10000)
+protocol  = receipts - winner
+operator  = floor(protocol * operatorProtocolBps / 10000)
+staker    = sum of booked purchase shares for the round
+finalizer = min(finalizerTip, protocol - operator - staker)
+treasury  = protocol - operator - staker - finalizer
+```
+
+Escrow is released by `receipts - staker`. Settlement emits `StakerRevenueSettled` with the
+round's booked staker total. It neither reads nor calls Statics, and it does not change
+FIDDY staking state. The sum of per-purchase floors never exceeds the floor of the aggregate,
+and `protocol - operator >= receipts * (10000 - winnerBps) * stakerProtocolBps / 10000^2`
+whenever the Operator and staker BPS sum to at most 10000. The staker total is therefore
+always covered.
+
+Because revenue accrues at purchase, a stake added just before settlement earns nothing from
+earlier purchases.
+
+## Staking
+
+Staked FIDDY stays in the account's custody balance; available FIDDY is balance minus stake.
+Base weight equals stake. Revenue indexes are per asset and global. An account's accrual is
+`weight * (index - paidIndex)` with fractional remainders retained per account.
+
+Before any weight change, and in claim and cleanup, the account is checkpointed across every
+listed revenue asset in the same call. There is no paging and no global synchronization.
+`checkpointFiddyAccount(id)` is permissionless and takes no work limit. Its purpose is to let
+anyone trigger the boost check below.
+
+### Unstake lock
+
+`STAKE_LOCK` is 24 hours. Each account stores a stake start time. On a stake of `amount`:
+
+```text
+prior      = staked
+credit     = prior == 0 ? 0 : min(now - stakeStart, STAKE_LOCK)
+stakeStart = now - floor(prior * credit / (prior + amount))
+```
+
+Rounding down only lengthens the lock. This mirrors the weighted reset in Statics'
+`LibGlobalRewards._increasePending`. A large top-up on an old small stake relocks almost
+fully. `unstakeFiddy` reverts with `StakeLocked` until `now >= stakeStart + STAKE_LOCK`.
+A partial unstake leaves the start time unchanged. The lock stays with the PositionNFT when
+it is sold. The lock exists to stop flash-funded and same-transaction self-rebate stakes; it
+is not a vesting schedule.
+
+## Operator boosts
+
+One Operator may register to one PositionNFT and vice versa. Registration requires that the
+caller owns both the PositionNFT and the Operator NFT, that `boostsEnabled` is on, and that
+the registry multiplier is within [10000, 12500]. The account stores that multiplier and its
+weight becomes `staked * multiplier / 10000`. Activation alone does not increase weight;
+re-registering refreshes the stored multiplier. Statics linking is unrelated.
+`boostsEnabled` gates new registrations only; disabling it does not revoke existing boosts.
+
+If the Operator is registered to another account, registration checks that account's boost.
+An invalid boost is forfeited and cleared first. A valid one makes registration revert
+`OperatorAlreadyRegistered`.
+
+### Validity by direct reads
+
+The Genesis activation registry only raises tiers through `activate`, and every
+owner-changing Genesis transfer deletes the tier through `onGenesisTransfer`. A registered
+boost is invalid if either:
+
+- `multiplierBps(operatorId)` is lower than the stored multiplier, which means the Operator
+  NFT changed hands; or
+- the Operator NFT's `ownerOf` differs from the PositionNFT's `ownerOf`, so selling the
+  position drops the boost.
+
+A higher multiplier is not a transfer; the stored value is kept until the owner re-registers.
+Every checkpoint of a registered account checks validity before booking accrual. That covers
+claim, stake, unstake, `checkpointFiddyAccount`, register, remove and cleanup, so a stale
+boost never becomes claimable. `indexedFiddyRevenue` reports the post-forfeit amount.
+
+### Forfeit
+
+When the boost is invalid, for each listed asset:
+
+1. Split the accrual since `paidIndex` into a base part `staked * delta` and an excess
+   `(weight - staked) * delta`, both RAY-scaled.
+2. Credit the base part to the account with the usual remainder handling.
+3. Redistribute the excess to the other stakers:
+   `index += excess / (totalWeight - accountWeight)`, with the division remainder handled as
+   dust. With no other weight, the excess goes to Treasury.
+4. Set the account's `paidIndex` to the index after redistribution, so it receives no part
+   of its own forfeit.
+
+The registration and the Operator mapping are then cleared, weight returns to stake, total
+weight is updated and `FiddyBoostForfeited` is emitted per asset with the forfeited amount.
+The forfeit covers the whole boosted excess since the account's last checkpoint, including
+excess earned before the transfer. Excess booked by a checkpoint before either NFT changes
+hands is kept.
+
+**Accepted residual.** Selling the Operator NFT, buying it back and re-activating it to the
+same tier, all between two checkpoints, is not detected.
+
+## Account nonce
+
+Each account has a `uint64` `nonce`, exposed through `fiddyAccount(id)`. It increments on
+every owner action that changes the account: deposit, withdraw, wrap, unwrap, stake, unstake,
+claim with a nonzero payout, register, remove, cleanup and participation credit. It also
+increments on a boost forfeit. A third-party checkpoint that only books accrued revenue does
+not increment it, so it cannot be used to cancel a seller's listings. A PositionNFT market
+can condition orders on this nonce together with Statics' `stateNonce`.
 
 ## Account authority and lifecycle
 
-Financial actions require current ownerOf, never NFT approvals. One aggregate
-Fiddy external leg attaches atomically with the first financial state and remains
-for token holdings, stake or pending/indexed entitlement. NFT transfer changes
-financial control and carries prior rewards without moving reserves. The seller
-must claim before sale if desired. Unstaking does not redeem underlying.
+Financial actions require current `ownerOf`, never NFT approvals. One aggregate FIDDY
+external leg attaches atomically with the first financial state and remains while the account
+holds tokens, stake, a registration or entitlement. NFT transfer changes financial control and
+carries prior rewards without moving reserves. The seller must claim before sale if desired.
+Unstaking does not redeem underlying.
 
-One Operator may register to one PositionNFT per module and vice versa. Both
-NFTs must be owned by the registering caller. Read activation directly, retain
-the applied multiplier and both transfer markers. Base weight is 10000 BPS.
-Explicit refresh applies higher activation prospectively. Ownership-changing
-transfers of either NFT invalidate boosts, including round trips and recovery;
-raw stake and prior earnings remain intact. Statics linking is unrelated.
+Cleanup checkpoints the account, requires zero balance, stake and whole claims for every
+listed asset, surrenders only sub-unit fractions as dust, clears any registration and detaches
+the leg. No whole claim or FIDDY balance is erased to detach a leg.
 
-## Funded ordering and bounded progress
-
-Settlement reserves the staker allocation immediately and enqueues asset, amount
-and observed shared transfer head. A single FIFO and transfer cursor preserve
-order. Before indexing a batch, replay transfers through its original head,
-checkpoint affected accounts at the old per-asset indexes, then adjust weights.
-No later transfer or refreshed activation may affect an earlier funded batch.
-
-Processing accepts a bounded work budget and retains transfer/asset cursors.
-A partial transfer checkpoint prevents indexing until completed. Permissionless
-account checkpoint pagination prepares denominator changes; new indexed revenue
-invalidates completion until caught up. Earlier funded batches and current
-transfer/checkpoint synchronization are required before stake/unstake or
-registration changes. Claims of indexed earnings remain independent of backlog.
-
-Zero-weight batches route to Treasury. Global division dust is separately
-reserved and never reinjected into indexes. Accounts retain fractional earnings;
-empty-account cleanup may explicitly surrender only sub-unit fractions. No
-whole claim or FIDDY balance is erased to detach a leg. Pending becomes indexed
-without reserving funds twice. All payment assets remain independent.
+Global division dust is separately reserved and never reinjected into indexes; whole units of
+dust move to Treasury. All payment assets remain independent.
 
 ## Integration, trust and release boundaries
 
 Pin the generic Statics candidate at
-5027bfaa58af7309d53fca0f32ae574d87420f83 for actual-source tests. Statics supplies
-lifecycle, discovery and ordered history, with no product callbacks. Boosts
-require qualified registry-consumer handoff and continuous history coverage.
-Moving the upstream consumer away and back can create an undetectable recording
-gap; governance must preserve coverage. There is no fabricated history fallback.
+5027bfaa58af7309d53fca0f32ae574d87420f83 for actual-source tests. The Lottery uses only the
+Statics external account lifecycle (`attachExternalAccountLeg`, `detachExternalAccountLeg`),
+the `supportsInterface` binding check at initialization, and `ownerOf`. It does not read the
+Statics NFT transfer history, and it adds no product callbacks.
 
-Lottery governance retains configuration, consumer and conversion permissions,
-and pre-finalization upgrade power. Accounts/actions are public and directly
-callable without a mandatory relayer. Catch-up requires someone to submit its
-permissionless transactions. Chain ordering and token operational assumptions
-remain those of the base Lottery. Existing source licensing is unchanged.
+Trust assumptions:
 
-Actual-candidate local integration and block-pinned fork evidence are separate
-from deployment. This extension authorizes no live transactions or conversion
-activation. Historical formal reports do not prove the new system.
+- Exits (withdraw, unwrap, unstake and claim) depend on Statics only through PositionNFT
+  `ownerOf`. Statics is upgradeable by its own governance; a broken `ownerOf` would block
+  account actions. This is accepted.
+- Registered accounts additionally read the Genesis collection's `ownerOf` and the activation
+  registry's `multiplierBps` at every checkpoint. At the pinned candidate both contracts are
+  non-upgradeable and the Genesis collection has no burn, so these reads cannot revert for a
+  registered Operator.
+- Settlement depends on neither.
+
+Lottery governance retains configuration, consumer and conversion permissions, and
+pre-finalization upgrade power. Accounts and actions are public and directly callable
+without a relayer. Chain ordering and token operational assumptions remain those of the base
+Lottery. Existing source licensing is unchanged.
+
+Wrap, unwrap and consumer approval launch disabled. They are optional future switches that may
+never be enabled. Unwrapping by anyone reopens public wrap capacity; the cap limits outstanding
+public wraps, not total wrapped supply. Every unit stays fully backed either way.
+
+Actual-candidate local integration and block-pinned fork evidence are separate from
+deployment. This extension authorizes no live transactions or conversion activation.
+Historical formal reports do not prove the new system.
 
 ## Client and deployment preparation
 
-Install token, staking and view selector groups together with the updated purchase, governance,
-settlement and surplus facets. Existing round and configuration layouts are unchanged; reward
-extensions use a separate namespace and default to zero for existing rounds. The deployment script
-installs these selectors but leaves FIDDY uninitialized until governance supplies verified bindings
-through `initializeFiddy(STATICS, PositionNFT, Operators, activationRegistry)`. This is one-time.
-No reward configuration is enabled by this initialization. Both conversions, wrap capacity, boosts
-and external consumer approval launch at zero/false.
+Install token, staking and view selector groups together with the updated purchase,
+governance, settlement and surplus facets. Existing round and configuration layouts are
+unchanged; reward extensions use a separate namespace and default to zero for existing rounds.
 
-Before enabling boosts, qualify both history coverage records and the registry's actual consumer
-handoff. Continuous recording after that handoff is an integration trust assumption. Missing history
-cannot be reconstructed by this module. Do not enable against unqualified or interrupted history.
+The deployment script initializes FIDDY in the same transaction as the Diamond cut through
+`LotteryInit.initializeWithFiddy`, binding STATICS, the PositionNFT, the Operator collection
+and the activation registry. A freshly deployed Diamond therefore reports STATICS's decimals
+immediately. Upgrades that add FIDDY to an existing Diamond use the one-time
+`initializeFiddy(STATICS, PositionNFT, Operators, activationRegistry)`. Initialization enables
+no reward configuration. Both conversions, wrap capacity, boosts and external consumer
+approval launch at zero/false. Statics governance must separately approve the Diamond as an
+external account module before the first account attaches.
 
-Clients read `fiddyReserve`, `fiddyAccount`, `fiddyOperatorAccount`, `fiddyAsset`, `fiddyCredit`,
-`indexedFiddyRevenue`, `fiddyProcessing`, `fiddyBatch` and paginated `fiddyRevenueAssets` separately.
-Account balance includes raw stake; available FIDDY is balance minus stake. Pending batch revenue
-is not an indexed claim. Show checkpoint revision/cursor and processing progress before proposing
-stake or registration changes. Anyone may process up to 100 units or checkpoint up to 100 assets
-per call. Continue until transfers and earlier funded batches are drained, then checkpoint the
-selected account through every asset at the current revision. An index update invalidates that
-completion. Claims remain available during catch-up and pause.
+Clients read `fiddyReserve`, `fiddyAccount`, `fiddyOperatorAccount`, `fiddyAsset`,
+`fiddyCredit`, `indexedFiddyRevenue`, `fiddyStaking`, `fiddyRoundRevenue` and
+`fiddyRevenueAssets`. Account balance includes raw stake; available FIDDY is balance minus
+stake. The unlock time is `stakeStart + 24 hours`. Claims remain available during pause.
 
-`registerFiddyOperator` also switches or explicitly refreshes a registration. Activation alone does
-not increase Fiddy weight. Statics link/unlink has no Fiddy weight effect. Account cleanup is also
-paginated and can detach only an empty account after whole claims have been paid.
-
-Run the independent pinned Statics build before Fiddy tests, then the ABI parity check:
+Run the independent pinned Statics build before FIDDY tests, then the ABI parity check:
 
 ```sh
 bash script/build-legacy-baseline.sh
@@ -134,8 +264,13 @@ python3 script/check-statics-abi.py
 forge test --match-path 'test/Fiddy*.t.sol'
 ```
 
-The Statics fixture uses its compiler/EVM/optimizer settings and local launch funding. Fiddy tests
-deploy its resulting artifacts with their actual bytecode. These local fixtures are distinct from
-block-pinned live dependency qualification. Neither executes a deployment transaction.
+The Statics fixture uses its compiler/EVM/optimizer settings and local launch funding. FIDDY
+tests deploy its resulting artifacts with their actual bytecode. These local fixtures are
+distinct from block-pinned live dependency qualification. Neither executes a deployment
+transaction.
 
-Fork qualification uses Robinhood L2 block 101439372, hash `0x81582e4e3659a1e4ad74399fc8ea090acfe2878468029d7dedf3f54e5ec988f4`. Its `NUMBER` opcode returns L1 block 26303058. The test performs only local fork impersonation and candidate creation; it does not broadcast. Runtime code hashes are checked against the pinned deployment manifest before the registry handoff.
+Fork qualification uses Robinhood L2 block 101439372, hash
+`0x81582e4e3659a1e4ad74399fc8ea090acfe2878468029d7dedf3f54e5ec988f4`. Its `NUMBER` opcode
+returns L1 block 26303058. The test performs only local fork impersonation and candidate
+creation; it does not broadcast. Runtime code hashes are checked against the pinned deployment
+manifest before the registry handoff.

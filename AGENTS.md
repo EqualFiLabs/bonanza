@@ -17,9 +17,10 @@
   accounts for and forwards the configured Operator share; it does not maintain
   the Router's per-Operator ownership, reward-index, or claim state. FIDDY staking
   registrations are a separate PositionNFT account concern.
-- The Lottery consumes the generic Statics external-account lifecycle and ordered
-  NFT transfer history. Custody, FIDDY backing, staking and revenue stay in the
-  Lottery. Do not add product callbacks or modify finalized launch dependencies.
+- The Lottery consumes only the generic Statics external-account lifecycle and
+  PositionNFT `ownerOf`; it does not read Statics NFT transfer history. Custody,
+  FIDDY backing, staking and revenue stay in the Lottery. Do not add product
+  callbacks or modify finalized launch dependencies.
 - Do not modify sibling repositories or external deployments unless the user
   explicitly expands the scope. Inspect their live source and manifests when
   validating an integration assumption.

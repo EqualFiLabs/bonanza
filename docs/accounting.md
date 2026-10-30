@@ -70,10 +70,17 @@ amount = ticketPrice * q
 Before calling the token, the transaction records:
 
 ```text
+share = floor(amount * (10000 - winnerBps) * stakerProtocolBps / 100000000)  // 0 without FIDDY rewards
 round.soldTickets                  += q
 round.receipts                     += amount
-assetAccounting[token].activeRoundEscrow += amount
+stakerAccrued[round]               += share
+assetAccounting[token].activeRoundEscrow += amount - share
+fiddyRevenueReserved(token)        += share   // or treasuryAvailable += share at zero stake weight
 ```
+
+The staker share is final at purchase because tickets are never refunded. Escrow therefore holds
+only the part of receipts still to be allocated at settlement, and reserved staker revenue holds
+the rest until stakers claim it.
 
 It then calls `transferFrom(buyer, Diamond, amount)` and measures four balances:
 
@@ -106,7 +113,8 @@ Diamond upgrades. Historical deployment manifests retain their original settings
 winner       = floor(gross * winnerBps / D)
 protocol     = gross - winner
 operator     = floor(protocol * operatorProtocolBps / D)
-treasuryGross = protocol - operator
+staker       = stakerAccrued[round]   // sum of per-purchase shares; 0 without FIDDY rewards
+treasuryGross = protocol - operator - staker
 finalizer    = min(finalizerTip, treasuryGross)
 treasury     = treasuryGross - finalizer
 ```
@@ -114,13 +122,13 @@ treasury     = treasuryGross - finalizer
 The final subtraction gives all division remainder to Treasury. The exact conservation identity is:
 
 ```text
-winner + operator + treasury + finalizer == gross
+winner + operator + staker + treasury + finalizer == gross
 ```
 
 Settlement performs only storage reclassification:
 
 ```text
-activeRoundEscrow                              -= gross
+activeRoundEscrow                              -= gross - staker
 winnerLiability                               += winner
 pendingOperatorRevenue[integration][token]    += operator
 pendingOperatorRevenueTotal                   += operator
@@ -238,21 +246,35 @@ wrap moves exact STATICS into backing and creates account custody; unwrap burns 
 FIDDY and releases exact STATICS. External transfers change neither backing nor supply. Total
 account balances (including stake) equal `fiddyAccountCustody`; stake is not counted a second time.
 
-Settlement reserves staker revenue before removing round escrow. The reserve includes pending
-FIFO batches and indexed claims exactly once: indexing reduces pending, not reserved. Claims
-reduce reserved. Zero-weight batches and whole rounding dust reduce reserved and increase Treasury.
-Each account retains fractional entitlement while active. Explicit empty-account cleanup surrenders
-only fractions below one base unit. Historical fractions and index dust never enter a later index.
+Staker revenue is booked at purchase. With positive total weight the share is added to
+`fiddyRevenueReserved(asset)` and to the asset's index; with zero weight it goes to Treasury.
+Escrow and reserved revenue therefore both change at purchase, and settlement releases only
+`receipts - stakerAccrued` from escrow. Claims reduce reserved. Whole units of index division
+dust reduce reserved and increase Treasury. A forfeited boost excess moves between accounts
+through the index, or to Treasury when no other weight exists; it never leaves reserved
+otherwise. Each account retains fractional entitlement while active. Explicit empty-account
+cleanup surrenders only fractions below one base unit. Historical fractions and index dust never
+enter a later index.
 
-Winner = floor(receipts * winnerBps / 10000). Operator and staker amounts are independently floored
-fractions of the protocol remainder. Treasury receives the rest less the capped finalizer tip.
-The Operator and staker percentages sum to at most 10000. Old rounds have zero staker share.
+For each asset, reserved revenue equals the sum over accounts of claimable revenue, retained
+fractions and unbooked index accrual, plus global dust:
 
-For a FIDDY payment round, account withdrawal, ticket escrow and all claims move existing supply;
-reward inventory and account custody are counted alongside ordinary Lottery liabilities.
-STATICS liabilities count allocated backing once, without adding inventory again. Exact Router funding uses
-a single-use protocol movement and clears its allowance. Approved consumer status never permits
-raw transfers into protocol custody or redemption.
+```text
+reserved * RAY == sum(claimable * RAY + remainderRay + weight * (indexRay - paidIndex)) + dustRay
+```
+
+Winner = floor(receipts * winnerBps / 10000). The Operator amount is a floored fraction of the
+protocol remainder. The staker amount is the sum of per-purchase floors, which never exceeds the
+protocol remainder less the Operator amount. Treasury receives the rest less the capped finalizer
+tip. The Operator and staker percentages sum to at most 10000. Old rounds have zero staker share.
+
+For a FIDDY payment round, ticket escrow and all claims move existing supply; reward inventory,
+account custody and reserved FIDDY revenue are counted alongside ordinary Lottery liabilities.
+FIDDY payouts go only to the caller or the Treasury recipient. STATICS liabilities count
+allocated backing once, without adding inventory again. Exact Router funding uses a single-use
+protocol movement and clears its allowance, and requires the Router to be an approved FIDDY
+consumer so it can pay Operators. Approved consumer status never permits raw transfers into
+protocol custody or redemption.
 
 Historical formal reports do not cover FIDDY. Current evidence consists of focused tests, stateful
 conservation, actual-candidate integration, and separately reported fork qualification.

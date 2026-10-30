@@ -22,3 +22,18 @@ Each Round snapshots its Payment Token. Custody and every accounting category re
 that token so one asset cannot subsidize another. Surplus classification accepts only canonical
 Payment Token addresses previously admitted through governance configuration; arbitrary token
 addresses are rejected before their balances are queried.
+
+## FIDDY as a Payment Token
+
+FIDDY is not planned as a launch Payment Token, but the code supports it under extra rules:
+
+- A FIDDY-priced configuration with a nonzero Operator share is rejected unless the current
+  integration's Operator Fee Router is an approved FIDDY consumer. Without that approval the
+  Router could receive FIDDY but never pay it out. The same check runs before opening and before
+  every Router funding attempt. A failed funding attempt leaves the FIDDY in the Lottery and stays
+  retryable.
+- Every FIDDY payout goes only to the caller or to the governance Treasury recipient. This covers
+  winner claims, finalizer-tip claims, staker revenue claims and Treasury delivery, and it keeps
+  protocol payouts from bypassing the FIDDY transfer restriction.
+- FIDDY reward inventory, account custody and reserved FIDDY staker revenue are counted alongside
+  ordinary Lottery liabilities for surplus purposes.

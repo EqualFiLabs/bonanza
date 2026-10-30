@@ -52,8 +52,8 @@ storage and delegates to the selected facet. The initial production surface cont
 | `RevenueFacet` | Retryable Operator/Treasury delivery and canonical-token surplus handling |
 | `LotteryViewFacet` | Round, configuration, ticket-range, and accounting reads |
 | `FiddyTokenFacet` | Backed FIDDY, consumer permissions and PositionNFT custody movements |
-| `FiddyStakingFacet` | Prospective stake, registration, bounded funded-revenue processing and claims |
-| `FiddyViewFacet` | Reserves, accounts, indexed credits, registrations and pending processing |
+| `FiddyStakingFacet` | Locked stake, boost registration and validation, complete checkpoints and claims |
+| `FiddyViewFacet` | Reserves, accounts, indexed credits, registrations, round staker revenue and revenue assets |
 
 No facet owns an independent balance or proxy. Delegatecalls operate on explicitly namespaced
 Diamond storage.
@@ -69,7 +69,7 @@ The implementation uses stable `keccak256` namespace slots rather than a shared 
 | `statics.lottery.storage.integration.v1` | append-only Registry/Router versions |
 | `statics.lottery.storage.accounting.v1` | per-token liabilities, versioned Operator buckets, finalizer credits, admitted tokens |
 | `statics.lottery.storage.governance.v1` | guardian, Treasury recipient, pause state |
-| `statics.lottery.storage.fiddy.v1` | FIDDY extensions, reserves, accounts, registrations and funded FIFO |
+| `statics.lottery.storage.fiddy.v1` | FIDDY extensions, reserves, accounts, registrations, revenue indexes and per-round staker revenue |
 | OpenZeppelin ERC-7201 ERC20 namespace | ERC-20 balances, allowances and supply |
 | `statics.lottery.storage.reentrancy.v1` | Diamond-wide value-path reentrancy state |
 
@@ -160,4 +160,4 @@ The disposable Robinhood Testnet release preserves the single-address architectu
 Those addresses and roles are a bounded test rehearsal. They are not a production governance or
 deployment recommendation.
 
-The [FIDDY extension](fiddy-rewards.md) consumes generic Statics PositionNFT external legs and ordered transfer history. Fiddy custody and revenue accounting stay inside the Lottery; this does not move Router allocations into Fiddy staking.
+The [FIDDY extension](fiddy-rewards.md) consumes generic Statics PositionNFT external legs and `ownerOf`; it does not read Statics NFT transfer history. Staker revenue is booked at each ticket purchase. FIDDY custody and revenue accounting stay inside the Lottery; this does not move Router allocations into FIDDY staking.

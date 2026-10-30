@@ -438,7 +438,7 @@ per-purchase limit respected
 buyer spent == Lottery received == ticketPrice * ticketQuantity
 ```
 
-For every purchase, the Lottery measures the buyer and Diamond token balances before and after `SafeERC20.safeTransferFrom`. It reverts with `InexactTokenTransfer` unless both deltas equal the required amount. Successful purchases increase the Round's receipts, the token's active escrow, and the cumulative ticket range by that exact amount only. Token decimals are not normalized; each configuration expresses ticket price and Finalizer Tip directly in that Payment Token's base units.
+For every purchase, the Lottery measures the buyer and Diamond token balances before and after `SafeERC20.safeTransferFrom`. It reverts with `InexactTokenTransfer` unless both deltas equal the required amount. Successful purchases increase the Round's receipts and cumulative ticket range by that exact amount. When the Round has a FIDDY staker share, the purchase books `share = floor(amount * (BPS - winnerBps) * stakerProtocolBps / BPS^2)` to stakers immediately and increases the token's active escrow by `amount - share`; otherwise escrow increases by `amount`. Token decimals are not normalized; each configuration expresses ticket price and Finalizer Tip directly in that Payment Token's base units.
 
 ### Deadline closure
 
@@ -530,17 +530,18 @@ uint256 gross = round.receipts;
 uint256 winnerAmount = Math.mulDiv(gross, round.config.winnerBps, BPS);
 uint256 protocolAmount = gross - winnerAmount;
 uint256 operatorAmount = Math.mulDiv(protocolAmount, round.config.operatorProtocolBps, BPS);
-uint256 treasuryGross = protocolAmount - operatorAmount;
+uint256 stakerAmount = stakerAccrued[roundId]; // booked per purchase, zero without FIDDY rewards
+uint256 treasuryGross = protocolAmount - operatorAmount - stakerAmount;
 uint256 finalizerTip = Math.min(round.config.finalizerTip, treasuryGross);
 uint256 treasuryNet = treasuryGross - finalizerTip;
 ```
 
-Rounding flows toward Treasury because allocations are calculated downward and remaining value is calculated by subtraction.
+Rounding flows toward Treasury because allocations are calculated downward and remaining value is calculated by subtraction. The per-purchase staker floors sum to at most `floor(gross * (BPS - winnerBps) * stakerProtocolBps / BPS^2)`, which never exceeds `protocolAmount - operatorAmount` when the Operator and staker BPS sum to at most `BPS`.
 
 Therefore:
 
 ```text
-winner + operator + treasuryNet + finalizerTip = gross
+winner + operator + staker + treasuryNet + finalizerTip = gross
 ```
 
 exactly.
@@ -558,7 +559,7 @@ Round.winnerClaimable = winnerAmount
 activeRoundForConfig[round.configVersion] = 0
 activeRoundCount -= 1
 AssetAccounting storage accounting = assetAccounting[round.config.paymentToken]
-accounting.activeRoundEscrow -= gross
+accounting.activeRoundEscrow -= gross - stakerAmount
 accounting.winnerLiability += winnerAmount
 pendingOperatorRevenue[round.integrationVersion][round.config.paymentToken] += operatorAmount
 accounting.pendingOperatorRevenueTotal += operatorAmount
@@ -567,7 +568,7 @@ finalizerCredits[round.config.paymentToken][msg.sender] += finalizerTip
 accounting.finalizerLiability += finalizerTip
 ```
 
-Settlement does not transfer the Payment Token to the winner, Operators, Treasury, or finalizer.
+Settlement does not transfer the Payment Token to the winner, Operators, Treasury, or finalizer. It emits `StakerRevenueSettled` with the booked staker total and does not call Statics or change FIDDY staking state.
 
 Validates Requirements 7 through 13, 16, 18, 19 and 20.
 
@@ -1606,11 +1607,18 @@ The BLS primitive library should be pinned to a reviewed `bls-solidity` implemen
 # FIDDY rewards extension
 
 [FIDDY rewards](../docs/fiddy-rewards.md) specifies the additional token, account,
-registration, ordered processing, storage and API behavior. It extends the base
-allocation formula with a staker percentage of protocol receipts before the
-Treasury-funded finalizer tip. A missing extension means zero participation
-issuance and zero staker allocation; existing round structures are unchanged.
-Reserve funding follows Burntato: deposit exact STATICS and mint matching FIDDY
-into reward inventory immediately. Participation only credits existing inventory
-to accounts. Public wrap/unwrap remain independently disabled at launch; funding
-reward inventory does not enable public conversion or create funder redemption rights.
+registration, staking, storage and API behavior. It extends the base allocation with a staker
+percentage of protocol receipts, booked to the revenue index at each purchase rather than at
+settlement. Settlement subtracts the booked staker total before the Treasury-funded finalizer
+tip. A missing extension means zero participation issuance and zero staker allocation; existing
+round structures are unchanged. Reserve funding follows Burntato: deposit exact STATICS and mint
+matching FIDDY into reward inventory immediately. Participation only credits existing inventory
+to accounts. Public wrap/unwrap remain independently disabled at launch; funding reward
+inventory does not enable public conversion or create funder redemption rights.
+
+Staking checkpoints an account across every listed revenue asset (at most 64) in one call before
+any weight change, claim or cleanup. Unstaking is locked for 24 hours with a stake-weighted reset
+on top-ups. Operator boosts are validated at every checkpoint by reading the activation multiplier
+and both NFT owners directly; an invalid boost forfeits its excess since the last checkpoint to
+the other stakers. The Lottery does not read Statics NFT transfer history. Exits depend on Statics
+only through PositionNFT `ownerOf`, an accepted trust assumption.
