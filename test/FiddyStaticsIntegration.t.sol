@@ -8,6 +8,7 @@ import { IStaticsExternalModules } from "../src/interfaces/IStaticsExternalModul
 import { FiddyConfig } from "../src/shared/FiddyTypes.sol";
 import { Round } from "../src/shared/Types.sol";
 import { FiddyErrors } from "../src/shared/FiddyErrors.sol";
+import { IFiddyActivation } from "../src/interfaces/IFiddyProtocol.sol";
 
 interface IStaticsCandidate {
     function create() external returns (address, address, address, address, uint256);
@@ -48,7 +49,7 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         fiddy.initializeFiddy(underlying, position, ops, registry_);
     }
 
-    function testActualCandidateLifecycleAndPositionSale() public {
+    function testActualCandidateLifecycleBoostResetAndPositionSale() public {
         vm.prank(authority);
         fiddy.setFiddyConversions(true, false, 100 ether);
         vm.startPrank(alice);
@@ -75,6 +76,21 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         fiddy.fundFiddyReserve(2 ether);
         uint256 soldOut = _fundedRound(address(tokenB), false);
         uint256 deadline = _fundedRound(address(statics), true);
+        // An actual Genesis round trip resets the activation tier, so the boost is forfeited even
+        // though Alice owns both NFTs again. With no other stake the excess goes to Treasury.
+        vm.prank(alice);
+        actualOperators.transferFrom(alice, bob, 1);
+        vm.prank(bob);
+        actualOperators.transferFrom(bob, alice, 1);
+        assertEq(IFiddyActivation(activation).multiplierBps(1), 10_000);
+        uint256 treasuryB = stateView.assetAccounting(address(tokenB)).treasuryAvailable;
+        staking.checkpointFiddyAccount(positionId);
+        assertFalse(fiddyView.fiddyAccount(positionId).registered);
+        assertEq(fiddyView.fiddyAccount(positionId).weight, 100 ether);
+        assertEq(fiddyView.fiddyOperatorAccount(1), 0);
+        assertEq(fiddyView.fiddyCredit(positionId, address(tokenB)).claimable, 80);
+        assertEq(fiddyView.fiddyCredit(positionId, address(statics)).claimable, 40);
+        assertEq(stateView.assetAccounting(address(tokenB)).treasuryAvailable, treasuryB + 20);
         vm.prank(alice);
         IERC721(address(core)).transferFrom(alice, bob, positionId);
         vm.prank(alice);
@@ -83,9 +99,9 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         vm.prank(bob);
         staking.unstakeFiddy(positionId, 100 ether);
         vm.prank(bob);
-        staking.claimFiddyRevenue(positionId, address(tokenB), bob);
+        assertEq(staking.claimFiddyRevenue(positionId, address(tokenB), bob), 80);
         vm.prank(bob);
-        staking.claimFiddyRevenue(positionId, address(statics), bob);
+        assertEq(staking.claimFiddyRevenue(positionId, address(statics), bob), 40);
         vm.prank(bob);
         fiddy.withdrawFiddy(positionId, 102 ether, bob);
         Round memory round = stateView.round(soldOut);

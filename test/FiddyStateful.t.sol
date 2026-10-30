@@ -26,7 +26,7 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
         uint256 id = 1 + seed % 2;
         address owner = positions.ownerOf(id);
         FiddyAccount memory a = fiddyView.fiddyAccount(id);
-        uint256 mode = (seed >> 16) % 11;
+        uint256 mode = (seed >> 16) % 14;
         if (mode == 0) {
             _settle(seed % 2 == 0 ? address(tokenA) : address(tokenB), seed % 3 == 0);
         } else if (mode == 1 && a.balance > a.staked) {
@@ -63,7 +63,28 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
             staking.checkpointFiddyAccount(id);
         } else if (mode == 10) {
             skip(seed % 2 days);
+        } else if (mode == 11) {
+            uint256 operatorId = 1 + (seed >> 32) % 2;
+            address holder = operators.ownerOf(operatorId);
+            vm.prank(holder);
+            operators.transferFrom(holder, holder == alice ? bob : alice, operatorId);
+        } else if (mode == 12) {
+            _register(id, owner, seed);
+        } else if (mode == 13) {
+            vm.prank(owner);
+            staking.removeFiddyOperator(id);
         }
+    }
+
+    /// @dev Activation only rises, as in the Genesis registry; occupied valid boosts may revert.
+    function _register(uint256 id, address owner, uint256 seed) internal {
+        uint256 operatorId = 1 + (seed >> 32) % 2;
+        if (operators.ownerOf(operatorId) != owner) return;
+        uint256 current = operators.multiplierBps(operatorId);
+        vm.prank(owner);
+        operators.activate(operatorId, uint16(current + (seed >> 40) % (12_501 - current)));
+        vm.prank(owner);
+        try staking.registerFiddyOperator(id, operatorId) { } catch { }
     }
 
     function _participate(uint256 id, address owner, uint256 rate) internal {
@@ -95,6 +116,17 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
         assertEq(revenue.availableTokenSurplus(address(tokenB)), 0);
         _entitlement(address(tokenA));
         _entitlement(address(tokenB));
+        _registrations();
+    }
+
+    function _registrations() internal view {
+        for (uint256 id = 1; id <= 2; ++id) {
+            FiddyAccount memory a = fiddyView.fiddyAccount(id);
+            if (a.registered) assertEq(fiddyView.fiddyOperatorAccount(a.operatorId), id);
+            else assertEq(a.weight, a.staked);
+            uint256 occupant = fiddyView.fiddyOperatorAccount(id);
+            if (occupant != 0) assertEq(fiddyView.fiddyAccount(occupant).operatorId, id);
+        }
     }
 
     /// @dev Reserved revenue equals claimable, retained fractions and unbooked accrual of every

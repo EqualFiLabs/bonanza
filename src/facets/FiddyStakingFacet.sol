@@ -45,11 +45,12 @@ contract FiddyStakingFacet {
         emit FiddyBoostsEnabled(enabled);
     }
 
-    /// @notice Permissionlessly books an account's accrued revenue across every listed asset.
+    /// @notice Permissionlessly books an account's accrued revenue across every listed asset and
+    /// forfeits a boost whose Operator or PositionNFT ownership no longer qualifies.
     function checkpointFiddyAccount(uint256 id) external guarded {
         LibFiddy.enforceInitialized();
         IERC721(LibFiddyStorage.state().positionNFT).ownerOf(id);
-        LibFiddyStaking.checkpointAll(id);
+        LibFiddyStaking.sync(id);
     }
 
     function stakeFiddy(uint256 id, uint256 amount) external guarded {
@@ -58,7 +59,7 @@ contract FiddyStakingFacet {
         if (amount == 0) revert Errors.ZeroAmount();
         FiddyAccount storage a = LibFiddyStorage.state().accounts[id];
         if (amount > a.balance - a.staked) revert FiddyErrors.InsufficientFiddy();
-        LibFiddyStaking.checkpointAll(id);
+        LibFiddyStaking.sync(id);
         // Credit time already served by the prior stake, weighted by size and rounded toward a
         // longer lock, as Statics does for pending reward eligibility.
         uint256 prior = a.staked;
@@ -80,13 +81,14 @@ contract FiddyStakingFacet {
         if (amount > a.staked) revert FiddyErrors.InsufficientFiddy();
         uint256 unlockAt = uint256(a.stakeStart) + LibFiddyStaking.STAKE_LOCK;
         if (block.timestamp < unlockAt) revert FiddyErrors.StakeLocked(unlockAt);
-        LibFiddyStaking.checkpointAll(id);
+        LibFiddyStaking.sync(id);
         a.staked -= amount;
         LibFiddyStaking.updateWeight(id);
         emit FiddyUnstaked(id, amount, a.weight);
     }
 
-    /// @notice Register, switch or explicitly refresh the boost from a caller-owned Operator.
+    /// @notice Register, switch or explicitly refresh the boost from a caller-owned Operator. An
+    /// Operator still registered to another account is taken over only if that boost is invalid.
     function registerFiddyOperator(uint256 id, uint256 operatorId) external guarded {
         LibFiddy.enforceOwner(id);
         _active();
@@ -95,12 +97,18 @@ contract FiddyStakingFacet {
         if (IERC721(s.operators).ownerOf(operatorId) != msg.sender) {
             revert FiddyErrors.InvalidRegistration();
         }
-        uint256 occupied = s.operatorAccount[operatorId];
-        if (occupied != 0 && occupied != id) revert FiddyErrors.OperatorAlreadyRegistered();
         uint256 multiplier = IFiddyActivation(s.registry).multiplierBps(operatorId);
         if (multiplier < 10_000 || multiplier > 12_500) revert FiddyErrors.InvalidRegistration();
+        uint256 occupied = s.operatorAccount[operatorId];
+        if (occupied != 0 && occupied != id) {
+            if (LibFiddyStaking.boostValid(occupied)) {
+                revert FiddyErrors.OperatorAlreadyRegistered();
+            }
+            LibFiddyStaking.forfeit(occupied);
+        }
         LibFiddy.attach(id);
-        LibFiddyStaking.checkpointAll(id);
+        // Checkpoint after an eviction moves the index, so this account books at its old weight.
+        LibFiddyStaking.sync(id);
         LibFiddyStaking.clearRegistration(id);
         FiddyAccount storage a = s.accounts[id];
         a.registered = true;
@@ -113,7 +121,7 @@ contract FiddyStakingFacet {
 
     function removeFiddyOperator(uint256 id) external guarded {
         LibFiddy.enforceOwner(id);
-        LibFiddyStaking.checkpointAll(id);
+        LibFiddyStaking.sync(id);
         LibFiddyStaking.clearRegistration(id);
         LibFiddyStaking.updateWeight(id);
         emit FiddyOperatorRemoved(id);
@@ -126,7 +134,7 @@ contract FiddyStakingFacet {
     {
         LibFiddy.enforceOwner(id);
         if (receiver == address(0) || receiver == address(this)) revert Errors.InvalidAddress();
-        LibFiddyStaking.checkpointAll(id);
+        LibFiddyStaking.sync(id);
         LibFiddyStorage.State storage s = LibFiddyStorage.state();
         FiddyCredit storage c = s.credits[id][asset];
         amount = c.claimable;
@@ -143,7 +151,7 @@ contract FiddyStakingFacet {
         LibFiddyStorage.State storage s = LibFiddyStorage.state();
         FiddyAccount storage a = s.accounts[id];
         if (a.balance != 0 || a.staked != 0) revert FiddyErrors.AccountNotEmpty();
-        LibFiddyStaking.checkpointAll(id);
+        LibFiddyStaking.sync(id);
         uint256 count = s.revenueAssets.length;
         for (uint256 i; i < count; ++i) {
             address asset = s.revenueAssets[i];
@@ -162,12 +170,15 @@ contract FiddyStakingFacet {
         emit FiddyAccountClosed(id);
     }
 
+    /// @notice Revenue a claim would pay now, after any pending boost forfeit.
     function indexedFiddyRevenue(uint256 id, address asset)
         external
         view
         returns (uint256 amount, uint256 remainderRay)
     {
-        return LibFiddyStaking.accrued(id, asset);
+        FiddyAccount storage a = LibFiddyStorage.state().accounts[id];
+        uint256 weight = LibFiddyStaking.boostValid(id) ? a.weight : a.staked;
+        return LibFiddyStaking.accrued(id, asset, weight);
     }
 
     function _active() private view {
