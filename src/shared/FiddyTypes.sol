@@ -14,6 +14,7 @@ struct FiddyAccount {
     uint256 operatorId;
     uint256 multiplierBps;
     uint64 stakeStart; // Unstaking unlocks STAKE_LOCK after this weighted start time.
+    uint64 nonce; // Changes with every owner action and boost forfeit, for order conditioning.
     bool registered;
     bool attached;
 }

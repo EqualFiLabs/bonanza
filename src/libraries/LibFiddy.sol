@@ -38,11 +38,18 @@ library LibFiddy {
         }
     }
 
+    /// @dev Third-party checkpoints that only book revenue must not call this, or anyone could
+    /// cancel orders conditioned on the nonce.
+    function touch(uint256 id) internal {
+        ++LibFiddyStorage.state().accounts[id].nonce;
+    }
+
     function creditBalance(uint256 id, uint256 amount) internal {
         attach(id);
         LibFiddyStorage.State storage s = LibFiddyStorage.state();
         s.accounts[id].balance += amount;
         s.custodyTotal += amount;
+        touch(id);
     }
 
     function debitBalance(uint256 id, uint256 amount) internal {
@@ -51,6 +58,7 @@ library LibFiddy {
         if (amount > a.balance - a.staked) revert FiddyErrors.InsufficientFiddy();
         a.balance -= amount;
         s.custodyTotal -= amount;
+        touch(id);
     }
 
     function issue(uint256 roundId, uint256 id, uint256 quantity) internal {

@@ -140,6 +140,7 @@ library LibFiddyStaking {
         uint256 operatorId = a.operatorId;
         clearRegistration(id);
         updateWeight(id);
+        ++a.nonce;
         emit FiddyBoostRevoked(id, operatorId);
     }
 

@@ -71,6 +71,7 @@ contract FiddyStakingFacet {
             SafeCast.toUint64(block.timestamp - Math.mulDiv(prior, credit, prior + amount));
         a.staked = prior + amount;
         LibFiddyStaking.updateWeight(id);
+        LibFiddy.touch(id);
         emit FiddyStaked(id, amount, a.weight, a.stakeStart);
     }
 
@@ -84,6 +85,7 @@ contract FiddyStakingFacet {
         LibFiddyStaking.sync(id);
         a.staked -= amount;
         LibFiddyStaking.updateWeight(id);
+        LibFiddy.touch(id);
         emit FiddyUnstaked(id, amount, a.weight);
     }
 
@@ -116,6 +118,7 @@ contract FiddyStakingFacet {
         a.multiplierBps = multiplier;
         s.operatorAccount[operatorId] = id;
         LibFiddyStaking.updateWeight(id);
+        LibFiddy.touch(id);
         emit FiddyOperatorRegistered(id, operatorId, multiplier);
     }
 
@@ -124,6 +127,7 @@ contract FiddyStakingFacet {
         LibFiddyStaking.sync(id);
         LibFiddyStaking.clearRegistration(id);
         LibFiddyStaking.updateWeight(id);
+        LibFiddy.touch(id);
         emit FiddyOperatorRemoved(id);
     }
 
@@ -141,6 +145,7 @@ contract FiddyStakingFacet {
         if (amount == 0) return 0;
         c.claimable = 0;
         s.assets[asset].reserved -= amount;
+        LibFiddy.touch(id);
         LibExactToken.pushExact(asset, receiver, amount);
         emit FiddyRevenueClaimed(id, asset, receiver, amount);
     }
@@ -162,6 +167,7 @@ contract FiddyStakingFacet {
             LibFiddyStaking.dust(asset, fraction);
         }
         LibFiddyStaking.clearRegistration(id);
+        LibFiddy.touch(id);
         if (a.attached) {
             a.attached = false;
             IStaticsExternalModules(s.positionNFT)
