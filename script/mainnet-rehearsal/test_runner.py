@@ -1,0 +1,89 @@
+"""Offline regression tests for safety and evidence gates; no chain or credentials needed."""
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import Mock
+from web3 import Web3
+from web3.datastructures import AttributeDict
+
+from common import Rehearsal, local_url
+from scenarios import Campaign
+
+
+class RunnerSafetyTest(unittest.TestCase):
+    def transaction_fixture(self, directory, status):
+        r = Rehearsal.__new__(Rehearsal)
+        r.run = Path(directory)
+        r.guard = Mock()
+        r.owner = "0x" + "11" * 20
+        r.scenario = "unit"
+        r.counter = 0
+        r.lottery = None
+        r.w3 = Mock()
+        r.w3.eth.gas_price = 100_000_000
+        r.w3.eth.wait_for_transaction_receipt.return_value = AttributeDict({
+            "transactionHash": bytes.fromhex("22" * 32), "status": status})
+        fn = Mock()
+        fn.address = "0x" + "33" * 20
+        fn.abi = {"type": "function", "name": "mutate", "inputs": []}
+        fn._encode_transaction_data.return_value = "0x12345678"
+        return r, fn
+
+    def test_mined_failure_never_counts_as_success_and_receipt_is_retained(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, fn = self.transaction_fixture(directory, 0)
+            with self.assertRaisesRegex(AssertionError, "Unexpected mined revert"):
+                r.tx(fn)
+            self.assertTrue((Path(directory) / "receipts/00001.json").exists())
+
+    def test_expected_revert_requires_correct_error_and_financial_rollback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, fn = self.transaction_fixture(directory, 0)
+            r.rpc = Mock(return_value={"output": "0xdeadbeef"})
+            with self.assertRaisesRegex(AssertionError, "Expected ZeroAmount"):
+                r.tx(fn, error="ZeroAmount()")
+            r.rpc.return_value = {"output": "0x" + Web3.keccak(text="ZeroAmount()")[:4].hex()}
+            with self.assertRaisesRegex(AssertionError, "Failed rollback"):
+                r.tx(fn, error="ZeroAmount()", check=Mock(side_effect=[{"balance": 10}, {"balance": 9}]))
+
+    def test_only_explicit_loopback_endpoints_are_accepted(self):
+        self.assertEqual(local_url("http://127.0.0.1:8855"), 8855)
+        for url in ["https://127.0.0.1:8855", "http://localhost:8855", "http://example.org:8855",
+                    "http://127.0.0.1", "http://user:pass@127.0.0.1:8855", "http://127.0.0.1:8855/path",
+                    "http://127.0.0.1:8855?upstream=remote", "http://127.0.0.1:8855#remote"]:
+            with self.subTest(url=url), self.assertRaises(AssertionError):
+                local_url(url)
+
+    def test_guard_rejects_wrong_chain_non_anvil_and_replaced_instance(self):
+        r = Rehearsal.__new__(Rehearsal)
+        r.environment = {"instanceId": "owned", "forkBlock": 100, "forkHash": "0xabc"}
+        r.w3 = Mock()
+        r.w3.eth.chain_id = 4663
+        r.w3.client_version = "anvil/test"
+        meta = {"instanceId": "owned", "forkedNetwork": {"forkBlockNumber": 100, "forkBlockHash": "0xabc"}}
+        r.rpc = Mock(return_value=meta)
+        r.guard()
+        for change in ["chain", "client", "instance", "block", "hash"]:
+            with self.subTest(change=change):
+                r.w3.eth.chain_id = 1 if change == "chain" else 4663
+                r.w3.client_version = "geth" if change == "client" else "anvil/test"
+                r.rpc.return_value = {"instanceId": "foreign" if change == "instance" else "owned",
+                    "forkedNetwork": {"forkBlockNumber": 101 if change == "block" else 100,
+                                      "forkBlockHash": "0xdef" if change == "hash" else "0xabc"}}
+                with self.assertRaises(AssertionError):
+                    r.guard()
+
+    def test_route_inventory_alone_cannot_satisfy_behavioral_coverage(self):
+        r = Campaign.__new__(Campaign)
+        r.installed = {"12345678": {"signature": "withdraw()", "name": "Facet", "facet": "0x123"}}
+        r.coverage = {"withdraw()": {"view": [], "success": [], "revert": [{"transactionHash": "0xfail"}]}}
+        r.lottery = Mock()
+        r.lottery.abi = [{"type": "function", "name": "withdraw", "inputs": [], "outputs": [], "stateMutability": "nonpayable"}]
+        with tempfile.TemporaryDirectory() as directory:
+            r.run = Path(directory)
+            with self.assertRaisesRegex(AssertionError, "Missing direct selector coverage"):
+                r.coverage_gate()
+
+
+if __name__ == "__main__":
+    unittest.main()
