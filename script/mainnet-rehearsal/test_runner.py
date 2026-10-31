@@ -9,10 +9,16 @@ from web3.datastructures import AttributeDict
 
 from common import Rehearsal, local_url
 from rehearse import ATTEMPT_ARTIFACTS
-from scenarios import Campaign, allocation
+from scenarios import Campaign, allocation, soak_modes
 
 
 class RunnerSafetyTest(unittest.TestCase):
+    def test_soak_schedule_is_deterministic_seeded_and_complete(self):
+        first = soak_modes(2631, 80)
+        self.assertEqual(first, soak_modes(2631, 80))
+        self.assertNotEqual(first, soak_modes(2632, 80))
+        self.assertEqual(set(first), set(range(12)))
+
     def test_resume_archives_same_block_submission_journal(self):
         self.assertIn("same-block-submissions.jsonl", ATTEMPT_ARTIFACTS)
 

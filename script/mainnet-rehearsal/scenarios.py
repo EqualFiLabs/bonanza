@@ -11,7 +11,7 @@ from eth_utils.abi import abi_to_signature
 from hexbytes import HexBytes
 from web3 import Web3
 
-from common import ROOT, Rehearsal, ZERO, ZERO32, WAD, MAX, write, plain, require
+from common import ROOT, Rehearsal, ZERO, ZERO32, WAD, RAY, MAX, write, plain, require
 
 HERE = Path(__file__).resolve().parent
 
@@ -26,6 +26,13 @@ def allocation(config, quantities, staker_bps):
     remainder = gross - winner - operator - staker
     tip = min(config[8], remainder)
     return gross, winner, operator, staker, tip, remainder - tip
+
+
+def soak_modes(seed, steps, action_count=12):
+    """Deterministic shuffled schedule that covers every action when the phase is long enough."""
+    modes = [index % action_count for index in range(steps)]
+    random.Random(seed).shuffle(modes)
+    return modes
 
 
 def combined(artifacts):
@@ -43,7 +50,7 @@ class Campaign(Rehearsal):
         for name in ["lifecycle", "authorization", "locks_and_boosts", "hostile_assets",
                      "fiddy_payments", "same_block_ordering", "drand_adversarial",
                      "module_dependency", "router_rotation", "governance", "boundaries",
-                     "asset_capacity", "composed_soak"]:
+                     "multi_boost_capacity", "persistent_soak"]:
             self.reset(name)
             print(f"Running {name}", flush=True)
             getattr(self, name)()
@@ -222,6 +229,81 @@ class Campaign(Rehearsal):
             self.tx(self.lottery.functions.stakeFiddy(position, amount), actor)
         self.tx(self.lottery.functions.setFiddyBoostsEnabled(True))
         self.tx(self.lottery.functions.registerFiddyOperator(1, self.operator_id), self.alice)
+
+    def activate_operator(self, operator_id, actor):
+        require(self.call(self.operators.functions.ownerOf(operator_id)) == actor,
+                "Operator activation owner mismatch")
+        self.tx(self.token(self.underlying).functions.approve(self.activation.address, MAX), actor)
+        if self.call(self.activation.functions.tierOf(operator_id)) == 0:
+            self.tx(self.activation.functions.activate(operator_id, 1), actor)
+
+    def acquire_operator(self, operator_id, actor):
+        owner = self.call(self.operators.functions.ownerOf(operator_id))
+        if owner != actor:
+            self.impersonate(owner)
+            self.tx(self.operators.functions.transferFrom(owner, actor, operator_id), owner)
+        self.activate_operator(operator_id, actor)
+
+    def transferable_operators(self, count):
+        operators = []
+        for operator_id in range(1, 256):
+            if operator_id != self.operator_id and not self.call(self.operators.functions.locked(operator_id)):
+                operators.append(operator_id)
+                if len(operators) == count:
+                    return operators
+        raise AssertionError("Not enough transferable Genesis Operators")
+
+    def modeled_fiddy_credit(self, position, asset, weight):
+        revenue = self.call(self.lottery.functions.fiddyAsset(asset))
+        credit = self.call(self.lottery.functions.fiddyCredit(position, asset))
+        delta = revenue[0] - credit[0]
+        scaled = weight * delta
+        whole = credit[1] + scaled // RAY
+        fraction = scaled % RAY + credit[2]
+        return whole + fraction // RAY, fraction % RAY, delta
+
+    def modeled_fiddy_forfeit(self, position, asset):
+        """Independent exact state transition for an invalid boost forfeiture."""
+        f = self.lottery.functions
+        account = self.call(f.fiddyAccount(position))
+        total_weight = self.call(f.fiddyStaking())[0]
+        revenue = self.call(f.fiddyAsset(asset))
+        accounting = self.call(f.assetAccounting(asset))
+        whole, remainder, delta = self.modeled_fiddy_credit(position, asset, account[1])
+        index, reserved, dust = revenue[:3]
+        treasury = accounting[5]
+        excess_weight = account[2] - account[1]
+        other_weight = total_weight - account[2]
+        scaled_dust = 0
+        if excess_weight and delta:
+            numerator = excess_weight * delta
+            if other_weight:
+                index_increment, scaled_dust = divmod(numerator, other_weight)
+                index += index_increment
+            else:
+                amount, scaled_dust = divmod(numerator, RAY)
+                reserved -= amount
+                treasury += amount
+        dust_whole, dust = divmod(dust + scaled_dust, RAY)
+        reserved -= dust_whole
+        treasury += dust_whole
+        return {"index": index, "reserved": reserved, "dust": dust, "treasury": treasury,
+                "claimable": whole, "remainder": remainder, "delta": delta}
+
+    def assert_modeled_fiddy_forfeit(self, position, asset, expected, claimed=False):
+        f = self.lottery.functions
+        revenue = self.call(f.fiddyAsset(asset))
+        credit = self.call(f.fiddyCredit(position, asset))
+        accounting = self.call(f.assetAccounting(asset))
+        paid = expected["claimable"] if claimed else 0
+        require(tuple(revenue[:3]) == (expected["index"], expected["reserved"] - paid,
+                                      expected["dust"]),
+                "Forfeit asset transition differs from independent model")
+        require(tuple(credit) == (expected["index"], 0 if claimed else expected["claimable"],
+                                  expected["remainder"]),
+                "Forfeit credit transition differs from independent model")
+        require(accounting[5] == expected["treasury"],
+                "Forfeit Treasury transition differs from independent model")
 
     def beacon(self, round_id):
         record = self.call(self.lottery.functions.round(round_id))
@@ -802,57 +884,204 @@ class Campaign(Rehearsal):
         self.tx(f.flushNativeSurplus(), self.carol, error="NoNativeSurplus()")
         self.result("boundary economics", "inventory cap, zero-weight Treasury, exact floors and surplus isolation")
 
-    def composed_soak(self):
+    def persistent_soak(self):
+        require(self.environment["soakSteps"] >= 12,
+                "Persistent soak requires at least 12 steps per seed")
         self.stakes()
-        rng = random.Random(self.environment["seed"])
         f = self.lottery.functions
-        versions = [self.new_config(asset) for asset in [self.underlying, self.weth]]
-        opened = [self.open(v, 1, i + 1, [self.alice, self.bob][i]) for i, v in enumerate(versions)]
-        action_log = []
-        for step in range(self.environment["soakSteps"]):
-            before_count = self.counter
-            mode = rng.randrange(6)
-            position = rng.choice([1, 2])
+        actors = [self.alice, self.bob, self.carol]
+        active_positions = [1, 2, 3]
+        for actor in actors:
+            position = self.call(self.position.functions.nextPositionId())
+            self.tx(self.position.functions.createPosition(actor), actor)
+            self.positions.append(position)
+            active_positions.append(position)
+        for position in active_positions[2:]:
             actor = self.call(self.position.functions.ownerOf(position))
-            if mode == 0:
-                rid = rng.choice(opened)
-                r = self.call(f.round(rid))
-                if r[10] == 2 or self.w3.eth.get_block("latest").timestamp >= r[4]:
+            amount = (20 + position) * WAD
+            self.tx(f.wrapFiddy(position, amount), actor)
+            self.tx(f.stakeFiddy(position, amount // 2), actor)
+        operator_b, operator_c = self.transferable_operators(2)
+        self.acquire_operator(operator_b, self.bob)
+        self.acquire_operator(operator_c, self.carol)
+        operators = [self.operator_id, operator_b, operator_c]
+
+        versions = [self.new_config(asset) for asset in [self.underlying, self.weth]]
+        opened = [self.open(v, 1, i + 1, actors[i]) for i, v in enumerate(versions)]
+        inventory = self.call(f.fiddyReserve())[0]
+        depletion = self.new_config(self.weth, rewards=(inventory, 5000, True), count=1)
+        opened.append(self.open(depletion, 1, active_positions[0], self.alice))
+        require(self.call(f.fiddyReserve())[0] == 0, "Reserve depletion setup left inventory")
+        self.tx(f.fundFiddyReserve(25 * WAD), self.alice)
+
+        base_seed = self.environment["seed"]
+        seeds = [base_seed, base_seed ^ 0x9E3779B9, base_seed + 0x85EBCA6B]
+        action_log = []
+        for phase, seed in enumerate(seeds):
+            rng = random.Random(seed)
+            modes = soak_modes(seed, self.environment["soakSteps"])
+            rounds_closed = phase == len(seeds) - 1
+            if rounds_closed:
+                for rid in opened:
                     self.settle(rid)
                     self.claim_round(rid)
-                    opened[opened.index(rid)] = self.open(r[1], 1, position, actor)
+                opened = []
+                self.advance(86401)
+                before_count = self.counter
+                self.tx(f.unstakeFiddy(3, 1), self.call(self.position.functions.ownerOf(3)))
+                self.reconcile()
+                action_log.append({"phase": phase, "seed": seed, "step": -1, "mode": 7,
+                                   "action": "unstake",
+                                   "position": 3, "owner": self.call(self.position.functions.ownerOf(3)),
+                                   "firstReceipt": before_count + 1, "lastReceipt": self.counter})
+            for step, mode in enumerate(modes):
+                before_count = self.counter
+                position = rng.choice(active_positions)
+                actor = self.call(self.position.functions.ownerOf(position))
+                if mode == 0:
+                    if rounds_closed:
+                        self.tx(f.checkpointFiddyAccount(position), self.carol)
+                        action = "checkpoint"
+                    else:
+                        rid = rng.choice(opened)
+                        record = self.call(f.round(rid))
+                        if record[10] == 2 or self.w3.eth.get_block("latest").timestamp >= record[4]:
+                            self.settle(rid)
+                            self.claim_round(rid)
+                            opened[opened.index(rid)] = self.open(record[1], 1, position, actor)
+                        else:
+                            self.tx(f.buyTicketsForPosition(rid, 1, position), actor)
+                        action = "round"
+                elif mode == 1:
+                    self.tx(f.checkpointFiddyAccount(position), self.carol)
+                    action = "checkpoint"
+                elif mode == 2:
+                    self.tx(f.claimFiddyRevenue(position, rng.choice(self.assets[:2]), actor), actor)
+                    action = "claim"
+                elif mode == 3:
+                    self.tx(f.wrapFiddy(position, rng.randrange(1, 10**15)), actor)
+                    action = "wrap"
+                elif mode == 4:
+                    recipient = rng.choice([candidate for candidate in actors if candidate != actor])
+                    self.tx(self.position.functions.transferFrom(actor, recipient, position), actor)
+                    action = "transfer"
+                elif mode == 5:
+                    self.tx(f.setPaused(True), self.guardian)
+                    self.tx(f.setPaused(False))
+                    action = "pause"
+                elif mode == 6:
+                    account = self.call(f.fiddyAccount(position))
+                    available = account[0] - account[1]
+                    if available == 0:
+                        amount = rng.randrange(1, 10**15)
+                        self.tx(f.wrapFiddy(position, amount), actor)
+                        available = amount
+                    self.tx(f.stakeFiddy(position, rng.randrange(1, min(available, 10**15) + 1)), actor)
+                    action = "stake"
+                elif mode == 7:
+                    account = self.call(f.fiddyAccount(position))
+                    if account[1] and self.w3.eth.get_block("latest").timestamp >= account[5] + 86400:
+                        amount = rng.randrange(1, min(account[1], 10**15) + 1)
+                        self.tx(f.unstakeFiddy(position, amount), actor)
+                        action = "unstake"
+                    else:
+                        self.tx(f.checkpointFiddyAccount(position), self.carol)
+                        action = "checkpoint"
+                elif mode == 8:
+                    operator_id = rng.choice(operators)
+                    current = self.call(self.operators.functions.ownerOf(operator_id))
+                    candidates = [candidate for candidate in active_positions
+                                  if self.call(self.position.functions.ownerOf(candidate)) != current]
+                    if candidates:
+                        target = rng.choice(candidates)
+                        next_owner = self.call(self.position.functions.ownerOf(target))
+                        cost = self.call(self.activation.functions.tierCost(1))
+                        if self.call(self.token(self.underlying).functions.balanceOf(next_owner)) >= cost:
+                            self.tx(self.operators.functions.transferFrom(current, next_owner, operator_id), current)
+                            self.activate_operator(operator_id, next_owner)
+                            self.tx(f.registerFiddyOperator(target, operator_id), next_owner)
+                            action = "operator-activation-registration"
+                        else:
+                            self.tx(f.checkpointFiddyAccount(target), self.carol)
+                            action = "checkpoint"
+                    else:
+                        self.tx(f.checkpointFiddyAccount(position), self.carol)
+                        action = "checkpoint"
+                elif mode == 9:
+                    reserve = self.call(f.fiddyReserve())[0]
+                    if rounds_closed:
+                        funder = max(actors, key=lambda candidate: self.call(
+                            self.token(self.underlying).functions.balanceOf(candidate)))
+                        self.tx(f.fundFiddyReserve(rng.randrange(1, 6) * WAD), funder)
+                        action = "reserve-refill"
+                    elif reserve:
+                        retired = rng.choice(opened)
+                        record = self.call(f.round(retired))
+                        remaining = record[0][2] - record[8]
+                        max_purchase = record[0][5] or remaining
+                        purchases = (remaining + max_purchase - 1) // max_purchase
+                        now = self.w3.eth.get_block("latest").timestamp
+                        if record[10] == 1 and now + purchases < record[4]:
+                            while remaining:
+                                quantity = min(remaining, max_purchase)
+                                self.tx(f.buyTicketsForPosition(retired, quantity, position), actor)
+                                remaining -= quantity
+                        self.settle(retired)
+                        self.claim_round(retired)
+                        opened.remove(retired)
+                        version = self.new_config(rng.choice(self.assets[:2]),
+                                                  rewards=(reserve, 5000, True), count=1)
+                        opened.append(self.open(version, 1, position, actor))
+                        require(self.call(f.fiddyReserve())[0] == 0, "Random reserve depletion left inventory")
+                        action = "reserve-depletion"
+                    else:
+                        funder = max(actors, key=lambda candidate: self.call(
+                            self.token(self.underlying).functions.balanceOf(candidate)))
+                        self.tx(f.fundFiddyReserve(rng.randrange(1, 6) * WAD), funder)
+                        action = "reserve-refill"
+                elif mode == 10:
+                    if rounds_closed:
+                        self.advance(rng.randrange(1, 3601))
+                        action = "time-advance"
+                    else:
+                        headroom = int(time.time()) - self.w3.eth.get_block("latest").timestamp - 120
+                        if headroom > 0:
+                            self.advance(min(rng.randrange(1, 31), headroom))
+                            action = "time-advance"
+                        else:
+                            action = "checkpoint"
+                    self.tx(f.checkpointFiddyAccount(position), self.carol)
                 else:
-                    self.tx(f.buyTicketsForPosition(rid, 1, position), actor)
-            elif mode == 1:
-                self.tx(f.checkpointFiddyAccount(position), self.carol)
-            elif mode == 2:
-                self.tx(f.claimFiddyRevenue(position, rng.choice(self.assets[:2]), actor), actor)
-            elif mode == 3:
-                self.tx(f.wrapFiddy(position, rng.randrange(1, 1000)), actor)
-            elif mode == 4:
-                recipient = self.carol if actor != self.carol else (self.alice if position == 1 else self.bob)
-                self.tx(self.position.functions.transferFrom(actor, recipient, position), actor)
-            else:
-                self.tx(f.setPaused(True), self.guardian)
-                self.tx(f.setPaused(False))
-            self.reconcile()
-            require(self.counter > before_count, "Soak choice performed no transaction")
-            action_log.append({"step": step, "mode": mode, "position": position, "owner": actor,
-                               "firstReceipt": before_count + 1, "lastReceipt": self.counter})
-            if step % 20 == 0:
-                print(f"Soak {step+1}/{self.environment['soakSteps']}: exact conservation", flush=True)
+                    if self.call(f.fiddyAccount(position))[7]:
+                        self.tx(f.removeFiddyOperator(position), actor)
+                        action = "operator-remove"
+                    else:
+                        self.tx(f.checkpointFiddyAccount(position), self.carol)
+                        action = "checkpoint"
+                self.reconcile()
+                require(self.counter > before_count, "Persistent soak choice performed no transaction")
+                action_log.append({"phase": phase, "seed": seed, "step": step, "mode": mode,
+                                   "action": action, "position": position, "owner": actor,
+                                   "firstReceipt": before_count + 1, "lastReceipt": self.counter})
+                if step % 20 == 0:
+                    print(f"Soak seed {phase + 1}/3, step {step + 1}/{len(modes)}: exact conservation",
+                          flush=True)
+
         for rid in opened:
             self.settle(rid)
             self.claim_round(rid)
         self.advance(86401)
-        for position in [1, 2]:
+        for position in active_positions:
             actor = self.call(self.position.functions.ownerOf(position))
-            amount = self.call(f.fiddyAccount(position))[1]
-            self.tx(f.unstakeFiddy(position, amount), actor)
+            account = self.call(f.fiddyAccount(position))
+            if account[1]:
+                self.tx(f.unstakeFiddy(position, account[1]), actor)
+            self.tx(f.removeFiddyOperator(position), actor)
             for asset in self.assets:
                 self.tx(f.claimFiddyRevenue(position, asset, actor), actor)
-            amount = self.call(f.fiddyAccount(position))[0]
-            self.tx(f.unwrapFiddy(position, amount, actor), actor)
+            balance = self.call(f.fiddyAccount(position))[0]
+            if balance:
+                self.tx(f.unwrapFiddy(position, balance, actor), actor)
             self.tx(f.cleanupFiddyAccount(position), actor)
             require(self.call(self.position.functions.externalLegCount(position)) == 0, "Soak leg remains")
         self.flush()
@@ -861,18 +1090,38 @@ class Campaign(Rehearsal):
             require(sum(self.call(f.assetAccounting(asset))) == 0, "Soak liabilities remain")
             require(self.call(f.fiddyAsset(asset))[1] == 0, "Soak staker liability remains")
         write(self.run / "soak-actions.json", action_log)
-        self.result("terminal reconciliation", "zero round/claim liabilities; only intentional backed inventory remains")
+        action_counts = {}
+        for row in action_log:
+            action_counts[row["action"]] = action_counts.get(row["action"], 0) + 1
+        scheduled_modes = sorted({row["mode"] for row in action_log if row["step"] >= 0})
+        required = {"round", "checkpoint", "claim", "wrap", "transfer", "pause", "stake", "unstake",
+                    "operator-activation-registration", "reserve-depletion",
+                    "reserve-refill", "time-advance"}
+        require(required <= action_counts.keys(), "Persistent soak did not execute every required action")
+        self.result("multi-seed terminal reconciliation", {
+            "seeds": seeds, "steps": len(action_log), "accounts": len(active_positions),
+            "scheduledModes": scheduled_modes, "scheduledModeCount": len(scheduled_modes),
+            "executedActions": action_counts, "reserveDepletedAndRefilled": True,
+        })
 
-    def asset_capacity(self):
+    def multi_boost_capacity(self):
         self.stakes()
         f = self.lottery.functions
+        operator_b, operator_c = self.transferable_operators(2)
+        self.acquire_operator(operator_b, self.bob)
+        self.acquire_operator(operator_c, self.carol)
+        self.tx(f.wrapFiddy(3, 60 * WAD), self.carol)
+        self.tx(f.stakeFiddy(3, 60 * WAD), self.carol)
+        self.tx(f.registerFiddyOperator(2, operator_b), self.bob)
+        self.tx(f.registerFiddyOperator(3, operator_c), self.carol)
         listed = []
         # Each distinct token has its own real transfer, purchase and revenue index.
         for index in range(64):
             token = self.deploy("RehearsalToken")
             self.tx(token.functions.mint(self.alice, 10000))
             self.tx(token.functions.approve(self.lottery.address, MAX), self.alice)
-            version = self.new_config(token.address, rewards=(0, 10000, False), price=1000, operator=0, tip=0)
+            version = self.new_config(token.address, rewards=(0, 10000, False), price=1000,
+                                      operator=0, tip=0, duration=2 * 86400)
             rid = self.open(version, 1, position=0)
             listed.append((token, rid))
             require(self.call(f.fiddyAsset(token.address))[1] == 500, "Capacity fixture revenue not booked")
@@ -887,13 +1136,96 @@ class Campaign(Rehearsal):
         # Already-listed assets still allow new configurations at capacity.
         self.new_config(listed[0][0].address, rewards=(0, 10000, False), operator=0)
         self.tx(self.operators.functions.transferFrom(self.alice, self.bob, self.operator_id), self.alice)
-        receipt = self.tx(f.checkpointFiddyAccount(1), self.carol)
-        require(receipt.gasUsed < 12_000_000, "Maximum-asset forfeit exceeded transaction budget")
+        self.tx(self.operators.functions.transferFrom(self.bob, self.carol, operator_b), self.bob)
+        self.tx(self.operators.functions.transferFrom(self.carol, self.alice, operator_c), self.carol)
+
+        expected_one = {token.address: self.modeled_fiddy_forfeit(1, token.address)
+                        for token, _ in listed}
+        checkpoint = self.tx(f.checkpointFiddyAccount(1), self.carol)
+        for token, _ in listed:
+            self.assert_modeled_fiddy_forfeit(1, token.address, expected_one[token.address])
+
+        expected_two = {token.address: self.modeled_fiddy_forfeit(2, token.address)
+                        for token, _ in listed}
+        claim_token = listed[0][0]
+        balance = self.call(claim_token.functions.balanceOf(self.bob))
+        claim = self.tx(f.claimFiddyRevenue(2, claim_token.address, self.bob), self.bob)
+        require(self.call(claim_token.functions.balanceOf(self.bob)) - balance ==
+                expected_two[claim_token.address]["claimable"],
+                "Claim-order entitlement mismatch")
+        for token, _ in listed:
+            self.assert_modeled_fiddy_forfeit(2, token.address, expected_two[token.address],
+                                              claimed=token.address == claim_token.address)
+
+        expected_three = {token.address: self.modeled_fiddy_forfeit(3, token.address)
+                          for token, _ in listed}
+        self.advance(86401)
+        unstake = self.tx(f.unstakeFiddy(3, 1), self.carol)
+        for token, _ in listed:
+            self.assert_modeled_fiddy_forfeit(3, token.address, expected_three[token.address])
+
+        self.activate_operator(self.operator_id, self.bob)
+        self.tx(f.registerFiddyOperator(2, self.operator_id), self.bob)
+        for _, rid in listed:
+            self.tx(f.buyTicketsForPosition(rid, 1, 1), self.alice)
+        self.tx(self.operators.functions.transferFrom(self.bob, self.alice, self.operator_id), self.bob)
+        self.activate_operator(self.operator_id, self.alice)
+        takeover_expected = {token.address: self.modeled_fiddy_forfeit(2, token.address)
+                             for token, _ in listed}
+        require(all(expected["delta"] > 0 for expected in takeover_expected.values()),
+                "Takeover fixture has no fresh boosted accrual")
+        takeover = self.tx(f.registerFiddyOperator(1, self.operator_id), self.alice)
+        for token, _ in listed:
+            self.assert_modeled_fiddy_forfeit(2, token.address, takeover_expected[token.address])
+
+        remaining = self.call(f.fiddyAccount(3))[1]
+        self.tx(f.unstakeFiddy(3, remaining), self.carol)
+        for token, _ in listed:
+            account = self.call(f.fiddyAccount(3))
+            expected = self.modeled_fiddy_credit(3, token.address, account[2])
+            before_balance = self.call(token.functions.balanceOf(self.carol))
+            self.tx(f.claimFiddyRevenue(3, token.address, self.carol), self.carol)
+            require(self.call(token.functions.balanceOf(self.carol)) - before_balance == expected[0],
+                    "Cleanup claim paid the wrong individual entitlement")
+            require(self.call(f.fiddyCredit(3, token.address))[2] == expected[1],
+                    "Cleanup claim changed the modeled remainder")
+        balance = self.call(f.fiddyAccount(3))[0]
+        self.tx(f.unwrapFiddy(3, balance, self.carol), self.carol)
+        cleanup = self.tx(f.cleanupFiddyAccount(3), self.carol)
+        require(self.call(self.position.functions.externalLegCount(3)) == 0, "First cleanup left an external leg")
+
+        self.tx(f.wrapFiddy(3, 1), self.carol)
+        self.tx(f.stakeFiddy(3, 1), self.carol)
+        self.activate_operator(operator_b, self.carol)
+        self.tx(f.registerFiddyOperator(3, operator_b), self.carol)
+        self.advance(86401)
+        self.tx(f.unstakeFiddy(3, 1), self.carol)
+        self.tx(f.removeFiddyOperator(3), self.carol)
+        self.tx(f.unwrapFiddy(3, 1, self.carol), self.carol)
+        reentry_cleanup = self.tx(f.cleanupFiddyAccount(3), self.carol)
+        require(self.call(self.position.functions.externalLegCount(3)) == 0,
+                "Tiny re-entry cleanup left an external leg")
+
+        gas = {"checkpoint": checkpoint.gasUsed, "claim": claim.gasUsed, "unstake": unstake.gasUsed,
+               "takeover": takeover.gasUsed, "cleanup": cleanup.gasUsed,
+               "reentryCleanup": reentry_cleanup.gasUsed}
+        require(all(value < 12_000_000 for value in gas.values()),
+                "Maximum-asset multi-boost path exceeded transaction budget")
         for token, rid in listed:
             require(self.call(token.functions.balanceOf(self.lottery.address)) ==
                     sum(self.call(f.assetAccounting(token.address))) + self.call(f.fiddyAsset(token.address))[1],
                     "Capacity scenario token liability mismatch")
-        self.result("maximum revenue assets", {"assets": 64, "forfeitGas": receipt.gasUsed, "65thRejected": True})
+            book = self.call(f.fiddyAsset(token.address))
+            scaled = book[2]
+            for position in self.positions:
+                account = self.call(f.fiddyAccount(position))
+                credit = self.call(f.fiddyCredit(position, token.address))
+                scaled += credit[1] * RAY + credit[2] + account[2] * (book[0] - credit[0])
+            require(scaled == book[1] * RAY, "Capacity asset scaled entitlement mismatch")
+        self.result("maximum-asset multi-boost abuse", {
+            "assets": 64, "invalidBoosts": 3, "65thRejected": True,
+            "individualEntitlements": True, "tinyReentry": True, "gas": gas,
+        })
 
     def coverage_gate(self):
         exceptions = {

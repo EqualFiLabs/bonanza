@@ -55,7 +55,7 @@ def provenance(run, environment):
 
 
 def start(args):
-    require(1 <= args.port <= 65535 and 1 <= args.steps <= 10000, "Invalid port or soak bounds")
+    require(1 <= args.port <= 65535 and 12 <= args.steps <= 10000, "Invalid port or soak bounds")
     with socket.socket() as sock:
         require(sock.connect_ex(("127.0.0.1", args.port)) != 0, "Port already occupied; choose another")
     config = json.loads((HERE / "mainnet.json").read_text())

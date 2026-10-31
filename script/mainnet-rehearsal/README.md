@@ -91,13 +91,17 @@ fixtures. These setup assumptions are retained with each run.
 - Boundary cases cover exhausted inventory, zero stake weight, tiny receipts,
   zero/full winner allocations, concurrency limits, excess tokens and forced ETH.
 - Capacity checks fund all 64 revenue assets, reject the 65th distinct asset and
-  measure a full multi-asset boost forfeiture within the transaction gas budget.
-- A seeded composed soak preserves accumulated state across purchases, claims,
-  NFT transfers, checkpoints, funding and pauses. It finishes by closing rounds,
-  claiming revenue, unstaking, unwrapping, detaching legs and reconciling liabilities.
+  invalidate three simultaneous Operator boosts. Checkpoint, claim, unstake and
+  takeover orderings preserve each account's entitlement; cleanup and one-unit
+  re-entry are repeated while every full-asset path remains within the gas budget.
+- A three-seed persistent soak uses six PositionNFT accounts and twelve scheduled
+  modes across purchases, claims, transfers, stake changes, Operator transfers
+  and activation, reserve depletion/refill, funding, pauses and time advances.
+  It finishes by closing rounds, claiming revenue, unstaking, unwrapping,
+  detaching legs and reconciling every remaining liability.
 
 Every scenario starts from the same post-deployment snapshot except transitions
-within the composed soak, which never reset. Receipts and traces are captured
+within the persistent soak, which never reset. Receipts and traces are captured
 before any later snapshot rollback. Expected reverts require status zero, the
 expected error selector, and unchanged financial state where applicable.
 Successful-path transactions require status one. Gas is recorded in each receipt.
