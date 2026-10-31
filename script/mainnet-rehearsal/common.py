@@ -139,6 +139,65 @@ class Rehearsal:
             self.record_coverage(fn, "revert" if error else "success", receipt, error)
         return receipt
 
+    def same_block(self, calls, timestamp=None):
+        """Mine ordered unlocked-account calls in one block and retain every receipt and trace."""
+        self.guard()
+        prepared = []
+        next_nonce = {}
+        for call in calls:
+            fn = call["fn"]
+            sender = call.get("sender", self.owner)
+            if sender not in next_nonce:
+                next_nonce[sender] = self.w3.eth.get_transaction_count(sender, "pending")
+            transaction = {
+                "from": sender,
+                "to": fn.address,
+                "data": fn._encode_transaction_data(),
+                "gas": call.get("gas", 12_000_000),
+                "value": call.get("value", 0),
+                "gasPrice": max(self.w3.eth.gas_price, 100_000_000),
+                "nonce": next_nonce[sender],
+            }
+            next_nonce[sender] += 1
+            prepared.append((fn, transaction, call.get("error")))
+
+        hashes = []
+        self.rpc("evm_setAutomine", [False])
+        try:
+            if timestamp is not None:
+                self.rpc("evm_setNextBlockTimestamp", [timestamp])
+            for _, transaction, _ in prepared:
+                hashes.append(self.w3.eth.send_transaction(transaction))
+            self.rpc("evm_mine", [])
+        finally:
+            self.rpc("evm_setAutomine", [True])
+
+        receipts = [self.w3.eth.wait_for_transaction_receipt(tx_hash) for tx_hash in hashes]
+        require(len({receipt.blockNumber for receipt in receipts}) == 1, "Ordered calls split across blocks")
+        for (fn, transaction, error), receipt in zip(prepared, receipts):
+            self.counter += 1
+            path = self.run / "receipts" / f"{self.counter:05d}.json"
+            path.parent.mkdir(exist_ok=True)
+            row = {"scenario": self.scenario, "signature": abi_to_signature(fn.abi),
+                   "expectedError": error, "sameBlock": True,
+                   "transaction": transaction, "receipt": receipt}
+            write(path, row)
+            if error:
+                require(receipt.status == 0, f"Expected same-block revert: {error}")
+                trace = self.rpc("debug_traceTransaction", [plain(receipt.transactionHash), {"tracer": "callTracer"}])
+                row["trace"] = trace
+                write(path, row)
+                expected = "0x" + Web3.keccak(text=error)[:4].hex()
+                require(trace.get("output", "0x").startswith(expected),
+                        f"Expected {error}, got {trace.get('output', '0x')[:10]}")
+            else:
+                require(receipt.status == 1,
+                        f"Unexpected same-block revert: {row['signature']} tx {plain(receipt.transactionHash)}")
+            if self.lottery and fn.address == self.lottery.address:
+                self.record_coverage(fn, "revert" if error else "success", receipt, error)
+            write(path, row)
+        return receipts
+
     def deploy(self, name, args=(), group="lottery"):
         self.guard()
         artifact = self.artifact(name, group)

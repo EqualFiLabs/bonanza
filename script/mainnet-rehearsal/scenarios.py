@@ -41,7 +41,9 @@ class Campaign(Rehearsal):
     def execute(self):
         self.setup()
         for name in ["lifecycle", "authorization", "locks_and_boosts", "hostile_assets",
-                     "fiddy_payments", "governance", "boundaries", "asset_capacity", "composed_soak"]:
+                     "fiddy_payments", "same_block_ordering", "drand_adversarial",
+                     "module_dependency", "router_rotation", "governance", "boundaries",
+                     "asset_capacity", "composed_soak"]:
             self.reset(name)
             print(f"Running {name}", flush=True)
             getattr(self, name)()
@@ -80,6 +82,7 @@ class Campaign(Rehearsal):
         self.timelock = self.deploy("OperatorFeeRouterTimelock", ([self.owner], [self.owner]), "router")
         self.router = self.deploy("OperatorFeeRouter", (self.operators.address, self.activation.address,
             dependencies["genesisVault"]["address"], self.timelock.address), "router")
+        self.vault = dependencies["genesisVault"]["address"]
         for getter, expected in [("operatorCollection", self.operators.address), ("activationRegistry", self.activation.address),
                                  ("operatorVault", dependencies["genesisVault"]["address"]), ("routerTimelock", self.timelock.address)]:
             require(self.call(getattr(self.router.functions, getter)()) == expected, f"Router binding {getter}")
@@ -89,6 +92,14 @@ class Campaign(Rehearsal):
             if cursor % 500 == 1:
                 print(f"Router bootstrap: {cursor - 1}/5555 Operators", flush=True)
         self.tx(self.router.functions.finalizeBootstrap())
+        # A second fully bootstrapped Router shares the same initial timelock wait. The rotation
+        # scenario can then settle against genuine published beacons before testing later outages.
+        self.timelock_b = self.deploy("OperatorFeeRouterTimelock", ([self.owner], [self.owner]), "router")
+        self.router_b = self.deploy("OperatorFeeRouter", (self.operators.address, self.activation.address,
+            self.vault, self.timelock_b.address), "router")
+        while self.call(self.router_b.functions.nextOperatorId()) <= self.call(self.router_b.functions.LAST_OPERATOR_ID()):
+            self.tx(self.router_b.functions.bootstrapOperators(100))
+        self.tx(self.router_b.functions.finalizeBootstrap())
         self.hostile = self.deploy("RehearsalToken")
         self.assets = [self.underlying, self.weth, self.hostile.address]
         self.deploy_lottery()
@@ -100,11 +111,19 @@ class Campaign(Rehearsal):
             salt = Web3.keccak(text=asset)
             self.tx(self.timelock.functions.schedule(self.router.address, 0, HexBytes(data), ZERO32, salt, 86400))
             operations.append((HexBytes(data), salt))
+        router_b_data = HexBytes(self.router_b.functions.registerRewardAsset(self.weth)._encode_transaction_data())
+        router_b_salt = Web3.keccak(text=self.router_b.address + self.weth)
+        self.tx(self.timelock_b.functions.schedule(
+            self.router_b.address, 0, router_b_data, ZERO32, router_b_salt, 86400
+        ))
         self.tx(self.timelock.functions.execute(self.router.address, 0, *[operations[0][0], ZERO32, operations[0][1]]),
                 error="TimelockUnexpectedOperationState(bytes32,bytes32)")
         self.advance(86401)
         for data, salt in operations:
             self.tx(self.timelock.functions.execute(self.router.address, 0, data, ZERO32, salt))
+        self.tx(self.timelock_b.functions.execute(
+            self.router_b.address, 0, router_b_data, ZERO32, router_b_salt
+        ))
         require(self.call(self.router.functions.totalEffectiveWeight()) > 0, "Router has no weight")
         self.tx(self.position.functions.setExternalModule(self.lottery.address, Web3.keccak(text="statics.lottery.fiddy.account.v1"), True))
         for actor in [self.alice, self.bob, self.carol]:
@@ -118,7 +137,9 @@ class Campaign(Rehearsal):
         require(tuple(self.call(self.lottery.functions.fiddyReserve())[3:]) == (False, False, 0, 0), "Unsafe launch conversion defaults")
         self.result("deployment identity", "mainnet dependency hashes, source runtimes and selector routes verified")
         write(self.run / "bindings.json", {"lottery": self.lottery.address, "position": self.position.address,
-            "router": self.router.address, "timelock": self.timelock.address, "actors": self.actors,
+            "router": self.router.address, "timelock": self.timelock.address,
+            "rotationRouter": self.router_b.address, "rotationTimelock": self.timelock_b.address,
+            "actors": self.actors,
             "assets": self.assets, "operatorId": self.operator_id, "positions": self.positions,
             "borrower": self.borrower.address})
 
@@ -204,7 +225,9 @@ class Campaign(Rehearsal):
 
     def beacon(self, round_id):
         record = self.call(self.lottery.functions.round(round_id))
-        beacon_round = record[7]
+        return record, self.beacon_signature(record[7])
+
+    def beacon_signature(self, beacon_round):
         timestamp = self.call(self.drand.functions.roundTime(beacon_round))
         require(timestamp <= int(time.time()), "Required Quicknet beacon is still in the real future")
         path = self.run / "beacons" / f"{beacon_round}.json"
@@ -216,7 +239,7 @@ class Campaign(Rehearsal):
             response = json.load(urllib.request.urlopen(url, timeout=30))
             require(response["round"] == beacon_round, "Quicknet response round mismatch")
             write(path, response)
-        return record, HexBytes(response["signature"])
+        return HexBytes(response["signature"])
 
     def settle(self, round_id, cached=False):
         record, signature = self.beacon(round_id)
@@ -469,6 +492,228 @@ class Campaign(Rehearsal):
         self.tx(f.approve(self.carol, 50), self.bob)
         self.tx(f.transferFrom(self.bob, self.carol, 50), self.carol)
         self.result("restricted payment token", "owner payouts, consumer routing and retryable Router delivery")
+
+    def same_block_ordering(self):
+        f = self.lottery.functions
+        self.tx(f.setFiddyConversions(True, True, 10000 * WAD))
+        self.tx(f.wrapFiddy(1, 100 * WAD), self.alice)
+        version = self.new_config(self.weth, rewards=(0, 5000, False), operator=0)
+        rid = self.open(version, 1)
+        share = self.config(self.weth, operator=0)[1] * 5000 * 5000 // (10000 * 10000)
+
+        branch = self.rpc("evm_snapshot", [])
+        reserved = self.call(f.fiddyAsset(self.weth))[1]
+        receipts = self.same_block([
+            {"fn": f.stakeFiddy(1, 100 * WAD), "sender": self.alice},
+            {"fn": f.buyTicketsForPosition(rid, 1, 1), "sender": self.alice},
+        ])
+        require(receipts[0].blockNumber == receipts[1].blockNumber, "Stake/purchase ordering split")
+        require(self.call(f.fiddyAsset(self.weth))[1] - reserved == share,
+                "Stake-before-purchase did not earn the purchase share")
+
+        require(self.rpc("evm_revert", [branch]), "Ordering branch revert failed")
+        treasury = self.call(f.assetAccounting(self.weth))[5]
+        reserved = self.call(f.fiddyAsset(self.weth))[1]
+        receipts = self.same_block([
+            {"fn": f.buyTicketsForPosition(rid, 1, 1), "sender": self.alice},
+            {"fn": f.stakeFiddy(1, 100 * WAD), "sender": self.alice},
+        ])
+        require(self.call(f.fiddyAsset(self.weth))[1] == reserved,
+                "Purchase-before-stake paid retrospective revenue")
+        require(self.call(f.assetAccounting(self.weth))[5] - treasury == share,
+                "Zero-weight purchase share did not reach Treasury")
+
+        # Book a claim, then prove transaction order controls old-owner authority within one block.
+        self.tx(f.buyTicketsForPosition(rid, 1, 1), self.alice)
+        earned = self.call(f.indexedFiddyRevenue(1, self.weth))[0]
+        require(earned > 0, "No revenue available for claim ordering")
+        branch = self.rpc("evm_snapshot", [])
+        balance = self.call(self.token(self.weth).functions.balanceOf(self.alice))
+        self.same_block([
+            {"fn": self.position.functions.transferFrom(self.alice, self.bob, 1), "sender": self.alice},
+            {"fn": f.claimFiddyRevenue(1, self.weth, self.alice), "sender": self.alice,
+             "error": "NotPositionOwner()"},
+        ])
+        require(self.call(self.position.functions.ownerOf(1)) == self.bob, "Position transfer did not win ordering")
+        require(self.call(self.token(self.weth).functions.balanceOf(self.alice)) == balance,
+                "Failed old-owner claim moved funds")
+
+        require(self.rpc("evm_revert", [branch]), "Claim ordering branch revert failed")
+        balance = self.call(self.token(self.weth).functions.balanceOf(self.alice))
+        self.same_block([
+            {"fn": f.claimFiddyRevenue(1, self.weth, self.alice), "sender": self.alice},
+            {"fn": self.position.functions.transferFrom(self.alice, self.bob, 1), "sender": self.alice},
+        ])
+        require(self.call(self.token(self.weth).functions.balanceOf(self.alice)) - balance == earned,
+                "Claim-before-transfer paid the wrong amount")
+        require(self.call(self.position.functions.ownerOf(1)) == self.bob, "Claim ordering transfer failed")
+
+        # At the exact deadline the final purchase always fails, regardless of transaction order,
+        # while the partial round settles against its original deadline beacon.
+        deadline_version = self.new_config(self.weth, rewards=None, count=2, operator=0)
+        deadline_round = self.open(deadline_version, 1, position=0)
+        record = self.call(f.round(deadline_round))
+        signature = self.beacon_signature(record[7])
+        timestamp = max(record[4] + 1, self.call(self.drand.functions.roundTime(record[7])))
+        branch = self.rpc("evm_snapshot", [])
+        self.same_block([
+            {"fn": f.buyTickets(deadline_round, 1), "sender": self.alice,
+             "error": "RoundExpired(uint256)"},
+            {"fn": f.settleRound(deadline_round, signature), "sender": self.carol},
+        ], timestamp)
+        require(self.call(f.round(deadline_round))[10] == 3, "Deadline round did not settle after rejected purchase")
+        require(self.call(f.round(deadline_round))[8] == 1, "Deadline purchase changed sold tickets")
+
+        require(self.rpc("evm_revert", [branch]), "Deadline ordering branch revert failed")
+        self.same_block([
+            {"fn": f.settleRound(deadline_round, signature), "sender": self.carol},
+            {"fn": f.buyTickets(deadline_round, 1), "sender": self.alice,
+             "error": "RoundNotOpen(uint256)"},
+        ], timestamp)
+        require(self.call(f.round(deadline_round))[10] == 3, "Settlement-first ordering failed")
+        self.result("same-block ordering", "stake, claim, transfer, deadline purchase and settlement orderings mined")
+
+    def drand_adversarial(self):
+        f = self.lottery.functions
+        version = self.new_config(self.weth, rewards=None, operator=0)
+        rid = self.open(version, 10, position=0)
+        record = self.call(f.round(rid))
+        target = record[7]
+        signature = self.beacon_signature(target)
+        wrong_round_signature = self.beacon_signature(target + 1)
+        corrupted = bytearray(signature)
+        corrupted[0] ^= 0x20  # Valid compressed point with the sign bit reversed.
+        timestamp = max(record[5] + 1, self.call(self.drand.functions.roundTime(target)))
+        now = self.w3.eth.get_block("latest").timestamp
+        if now < timestamp:
+            self.advance(timestamp - now)
+
+        self.tx(f.settleRound(rid, wrong_round_signature), self.carol,
+                error="InvalidQuicknetSignature(uint64)", check=self.financial_state)
+        self.tx(f.settleRound(rid, bytes(corrupted)), self.carol,
+                error="InvalidQuicknetSignature(uint64)", check=self.financial_state)
+        receipts = self.same_block([
+            {"fn": f.settleRound(rid, signature), "sender": self.carol},
+            {"fn": f.settleRound(rid, signature), "sender": self.carol,
+             "error": "RoundNotReady(uint256)"},
+        ])
+        require(receipts[0].blockNumber == receipts[1].blockNumber, "Competing settlements split blocks")
+        require(self.call(f.round(rid))[10] == 3 and self.call(self.drand.functions.hasSig(target)),
+                "Winning settlement did not cache and finalize")
+        self.claim_round(rid)
+
+        # The committed target remains usable after a long permissionless delay and failed proofs.
+        delayed_version = self.new_config(self.weth, rewards=None, operator=0)
+        delayed = self.open(delayed_version, 10, position=0)
+        delayed_record = self.call(f.round(delayed))
+        delayed_target = delayed_record[7]
+        delayed_signature = self.beacon_signature(delayed_target)
+        delayed_wrong = self.beacon_signature(delayed_target + 1)
+        self.tx(f.settleRound(delayed, delayed_wrong), self.carol,
+                error="InvalidQuicknetSignature(uint64)", check=self.financial_state)
+        target_time = self.call(self.drand.functions.roundTime(delayed_target)) + 7 * 86400
+        now = self.w3.eth.get_block("latest").timestamp
+        if now < target_time:
+            self.advance(target_time - now)
+        committed = self.call(f.round(delayed))[7]
+        self.settle(delayed)
+        require(self.call(f.round(delayed))[7] == committed, "Delayed settlement changed its committed beacon")
+        self.claim_round(delayed)
+        self.result("drand rejection and retry", "wrong-round, corrupted, competing and seven-day delayed proofs")
+
+    def module_dependency(self):
+        self.stakes()
+        f = self.lottery.functions
+        version = self.new_config(self.weth)
+        rid = self.open(version, 10)
+        self.settle(rid)
+        self.claim_round(rid)
+        module_type = Web3.keccak(text="statics.lottery.fiddy.account.v1")
+        self.tx(self.position.functions.setExternalModule(self.lottery.address, module_type, False))
+        self.advance(86401)
+        account = self.call(f.fiddyAccount(1))
+        self.tx(f.unstakeFiddy(1, account[1]), self.alice)
+        self.tx(f.claimFiddyRevenue(1, self.weth, self.alice), self.alice)
+        account = self.call(f.fiddyAccount(1))
+        self.tx(f.unwrapFiddy(1, account[0], self.alice), self.alice)
+        self.tx(f.cleanupFiddyAccount(1), self.alice)
+        require(self.call(self.position.functions.externalLegCount(1)) == 0,
+                "Disabled module blocked an existing account exit")
+
+        # Fill another PositionNFT through the real module API and prove first attachment rolls
+        # back both the token pull and account credit at the capacity boundary.
+        self.tx(self.position.functions.setExternalModule(self.lottery.address, module_type, True))
+        filler = self.deploy("RehearsalModule")
+        filler_type = Web3.keccak(text="rehearsal.capacity.module")
+        self.tx(self.position.functions.setExternalModule(filler.address, filler_type, True))
+        capacity = self.call(self.position.functions.externalLegCapacity())
+        require(capacity == 64, "Unexpected Statics external-leg capacity")
+        self.tx(filler.functions.fill(self.position.address, 3, filler_type, capacity), gas=20_000_000)
+        require(self.call(self.position.functions.externalLegCount(3)) == capacity,
+                "Capacity fixture did not fill the actual PositionNFT")
+        self.tx(f.wrapFiddy(3, WAD), self.carol,
+                error="ExternalLegCapacityReached(uint256)", check=self.financial_state)
+        require(self.call(f.fiddyAccount(3))[0] == 0 and not self.call(f.fiddyAccount(3))[8],
+                "Failed attachment leaked FIDDY account state")
+        self.result("Statics module liveness", "disabled-module exits and capacity attachment rollback")
+
+    def set_router_asset_enabled(self, timelock, router, asset, enabled, salt_label):
+        data = HexBytes(router.functions.setRewardAssetEnabled(asset, enabled)._encode_transaction_data())
+        salt = Web3.keccak(text=salt_label)
+        self.tx(timelock.functions.schedule(router.address, 0, data, ZERO32, salt, 86400))
+        self.advance(86401)
+        self.tx(timelock.functions.execute(router.address, 0, data, ZERO32, salt))
+
+    def router_rotation(self):
+        f = self.lottery.functions
+        old_version = self.call(f.currentIntegration())[1]
+        version_a = self.new_config(self.weth, rewards=None)
+        round_a = self.open(version_a, 10, position=0)
+        self.settle(round_a)
+        pending_a = self.call(f.pendingOperatorRevenue(old_version, self.weth))
+        require(pending_a > 1, "No historical Router liability")
+
+        timelock_b, router_b = self.timelock_b, self.router_b
+        self.tx(f.setIntegrationConfig((self.drand.address, router_b.address)))
+        current, new_version = self.call(f.currentIntegration())
+        require(new_version == old_version + 1 and current[1] == router_b.address,
+                "Router rotation did not create a distinct integration")
+        require(self.call(f.pendingOperatorRevenue(old_version, self.weth)) == pending_a,
+                "Rotation changed historical Router liability")
+
+        version_b = self.new_config(self.weth, rewards=None)
+        round_b = self.open(version_b, 10, position=0)
+        self.settle(round_b)
+        pending_b = self.call(f.pendingOperatorRevenue(new_version, self.weth))
+        require(pending_b > 1, "No new Router liability")
+
+        # Historical liabilities continue to the snapshotted Router after rotation.
+        old_before = self.call(self.token(self.weth).functions.balanceOf(self.router.address))
+        first_a = pending_a // 2
+        self.tx(f.flushOperatorRevenue(old_version, self.weth, first_a), self.carol)
+        require(self.call(self.token(self.weth).functions.balanceOf(self.router.address)) - old_before == first_a,
+                "Historical partial flush reached the wrong Router")
+        require(self.call(f.pendingOperatorRevenue(old_version, self.weth)) == pending_a - first_a,
+                "Historical partial flush changed the wrong liability")
+
+        # Disable actual Router B deposits, verify atomic failure, then re-enable and retry in parts.
+        self.set_router_asset_enabled(timelock_b, router_b, self.weth, False, "router-b-disable-weth")
+        self.tx(f.flushOperatorRevenue(new_version, self.weth, pending_b), self.carol,
+                error="OperatorRouterUnavailable(address,address)", check=self.financial_state)
+        require(self.call(f.pendingOperatorRevenue(new_version, self.weth)) == pending_b,
+                "Failed Router B delivery consumed liability")
+        self.set_router_asset_enabled(timelock_b, router_b, self.weth, True, "router-b-enable-weth")
+        new_before = self.call(self.token(self.weth).functions.balanceOf(router_b.address))
+        first_b = pending_b // 2
+        self.tx(f.flushOperatorRevenue(new_version, self.weth, first_b), self.alice)
+        self.tx(f.flushOperatorRevenue(new_version, self.weth, pending_b - first_b), self.bob)
+        require(self.call(self.token(self.weth).functions.balanceOf(router_b.address)) - new_before == pending_b,
+                "Router B retry delivered the wrong amount")
+        self.tx(f.flushOperatorRevenue(old_version, self.weth, pending_a - first_a), self.carol)
+        require(self.call(f.pendingOperatorRevenue(old_version, self.weth)) == 0 and
+                self.call(f.pendingOperatorRevenue(new_version, self.weth)) == 0,
+                "Router rotation left Operator revenue pending")
+        self.result("Router rotation and retry", "historical routing, disabled deposits and partial retries")
 
     def governance(self):
         self.stakes()

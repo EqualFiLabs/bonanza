@@ -76,6 +76,18 @@ fixtures. These setup assumptions are retained with each run.
   recovery after Router consumer permission is revoked and restored.
 - Governance scenarios preserve round snapshots, exercise pause-safe exits,
   add/replace/remove facet routes and irreversibly finalize upgrades.
+- Same-block ordering permutes staking and purchases, PositionNFT transfer and
+  revenue claims, plus final-ticket attempts and deadline settlement. Every call
+  is mined in one block with its ordered receipt and expected revert trace.
+- Real Quicknet abuse checks reject a signature from the adjacent round and a
+  sign-bit-corrupted full-length proof, resolve competing settlements, and retry
+  the originally committed beacon after a seven-day local delay.
+- Statics dependency checks disable the approved FIDDY module while an account
+  exits, then fill another PositionNFT to its real 64-leg capacity and require a
+  first FIDDY attachment to roll back payment and account state.
+- A second fully bootstrapped Operator Fee Router is registered through its own
+  timelock. Rotation preserves historical liabilities, disabled deposits fail
+  atomically, and partial delivery succeeds after re-enabling the new Router.
 - Boundary cases cover exhausted inventory, zero stake weight, tiny receipts,
   zero/full winner allocations, concurrency limits, excess tokens and forced ETH.
 - Capacity checks fund all 64 revenue assets, reject the 65th distinct asset and

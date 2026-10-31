@@ -56,6 +56,12 @@ interface IRehearsalPosition {
     function createPosition(address receiver) external payable returns (uint256);
 }
 
+interface IRehearsalExternalModules {
+    function attachExternalAccountLeg(uint256 positionId, bytes32 moduleType, bytes32 localId)
+        external
+        returns (bytes32);
+}
+
 /// @dev Consumer-funded and wrap-funded attempts must revert the complete purchase and stake.
 contract RehearsalBorrower {
     uint256 public position;
@@ -98,6 +104,16 @@ contract RehearsalBorrower {
 contract RehearsalFacet {
     function rehearsalPing() external pure returns (bytes32) {
         return keccak256("lottery-rehearsal");
+    }
+}
+
+/// @dev Fills the actual Statics external-leg array without mutating its storage directly.
+contract RehearsalModule {
+    function fill(address core, uint256 positionId, bytes32 moduleType, uint256 count) external {
+        for (uint256 i; i < count; ++i) {
+            IRehearsalExternalModules(core)
+                .attachExternalAccountLeg(positionId, moduleType, bytes32(i + 1));
+        }
     }
 }
 

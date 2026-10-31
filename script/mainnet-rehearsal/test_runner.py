@@ -63,6 +63,17 @@ class RunnerSafetyTest(unittest.TestCase):
                 r.tx(fn)
             self.assertTrue((Path(directory) / "receipts/00001.json").exists())
 
+    def test_same_block_send_failure_restores_automining(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, fn = self.transaction_fixture(directory, 1)
+            r.w3.eth.get_transaction_count.return_value = 0
+            r.w3.eth.send_transaction.side_effect = RuntimeError("send failed")
+            r.rpc = Mock(return_value=True)
+            with self.assertRaisesRegex(RuntimeError, "send failed"):
+                r.same_block([{"fn": fn}])
+            self.assertEqual(r.rpc.call_args_list[0].args, ("evm_setAutomine", [False]))
+            self.assertEqual(r.rpc.call_args_list[-1].args, ("evm_setAutomine", [True]))
+
     def test_expected_revert_requires_correct_error_and_financial_rollback(self):
         with tempfile.TemporaryDirectory() as directory:
             r, fn = self.transaction_fixture(directory, 0)
