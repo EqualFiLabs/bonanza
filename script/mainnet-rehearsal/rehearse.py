@@ -19,6 +19,11 @@ from common import ROOT, Rehearsal, ZERO, WAD, write, require, plain
 
 HERE = Path(__file__).resolve().parent
 ARTIFACTS = ROOT / ".rehearsal"
+ATTEMPT_ARTIFACTS = {
+    "bindings.json", "deployments.json", "fixture-provenance.json", "protocol-self-call.json",
+    "receipts", "results.json", "same-block-submissions.jsonl", "selector-coverage.json",
+    "soak-actions.json", "source-files.json", "summary.json",
+}
 
 
 def upstream(method, params):
@@ -156,7 +161,7 @@ def main():
         archive.mkdir()
         write(archive / "environment.json", json.loads((run / "environment.json").read_text()))
         for item in list(run.iterdir()):
-            if item.name in {"source-files.json", "receipts", "deployments.json", "summary.json", "results.json", "selector-coverage.json", "bindings.json", "fixture-provenance.json", "soak-actions.json", "protocol-self-call.json"} or item.name.startswith("reconciliation-"):
+            if item.name in ATTEMPT_ARTIFACTS or item.name.startswith("reconciliation-"):
                 item.rename(archive / item.name)
         provenance(run, r.environment)
     else:

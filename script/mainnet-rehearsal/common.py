@@ -162,18 +162,47 @@ class Rehearsal:
             prepared.append((fn, transaction, call.get("error")))
 
         hashes = []
+        submissions = self.run / "same-block-submissions.jsonl"
+        send_error = None
+        mine_error = None
         self.rpc("evm_setAutomine", [False])
         try:
             if timestamp is not None:
                 self.rpc("evm_setNextBlockTimestamp", [timestamp])
-            for _, transaction, _ in prepared:
-                hashes.append(self.w3.eth.send_transaction(transaction))
-            self.rpc("evm_mine", [])
+            for fn, transaction, error in prepared:
+                try:
+                    tx_hash = self.w3.eth.send_transaction(transaction)
+                except Exception as exc:  # preserve earlier accepted transactions before surfacing this error
+                    send_error = exc
+                    break
+                hashes.append(tx_hash)
+                submissions.parent.mkdir(exist_ok=True)
+                with submissions.open("a") as stream:
+                    stream.write(json.dumps(plain({
+                        "scenario": self.scenario,
+                        "signature": abi_to_signature(fn.abi),
+                        "expectedError": error,
+                        "transaction": transaction,
+                        "transactionHash": tx_hash,
+                    })) + "\n")
+            if hashes:
+                try:
+                    self.rpc("evm_mine", [])
+                except Exception as exc:
+                    mine_error = exc
         finally:
             self.rpc("evm_setAutomine", [True])
 
-        receipts = [self.w3.eth.wait_for_transaction_receipt(tx_hash) for tx_hash in hashes]
-        require(len({receipt.blockNumber for receipt in receipts}) == 1, "Ordered calls split across blocks")
+        receipts = []
+        receipt_error = None
+        for tx_hash in hashes:
+            try:
+                receipts.append(self.w3.eth.wait_for_transaction_receipt(tx_hash))
+            except Exception as exc:
+                receipt_error = receipt_error or exc
+                receipts.append(None)
+
+        rows = []
         for (fn, transaction, error), receipt in zip(prepared, receipts):
             self.counter += 1
             path = self.run / "receipts" / f"{self.counter:05d}.json"
@@ -181,12 +210,31 @@ class Rehearsal:
             row = {"scenario": self.scenario, "signature": abi_to_signature(fn.abi),
                    "expectedError": error, "sameBlock": True,
                    "transaction": transaction, "receipt": receipt}
+            if receipt is not None and receipt.status == 0:
+                try:
+                    row["trace"] = self.rpc(
+                        "debug_traceTransaction", [plain(receipt.transactionHash), {"tracer": "callTracer"}])
+                except Exception as exc:
+                    row["traceError"] = type(exc).__name__
             write(path, row)
+            rows.append((fn, error, receipt, row, path))
+
+        if send_error is not None:
+            raise send_error
+        if mine_error is not None:
+            raise mine_error
+        if receipt_error is not None:
+            raise receipt_error
+        require(len(receipts) == len(prepared), "Not all ordered calls were submitted")
+        require(len({receipt.blockNumber for receipt in receipts}) == 1, "Ordered calls split across blocks")
+        require([receipt.transactionIndex for receipt in receipts]
+                == sorted(receipt.transactionIndex for receipt in receipts),
+                "Ordered calls changed transaction order")
+
+        for fn, error, receipt, row, path in rows:
             if error:
                 require(receipt.status == 0, f"Expected same-block revert: {error}")
-                trace = self.rpc("debug_traceTransaction", [plain(receipt.transactionHash), {"tracer": "callTracer"}])
-                row["trace"] = trace
-                write(path, row)
+                trace = row.get("trace", {})
                 expected = "0x" + Web3.keccak(text=error)[:4].hex()
                 require(trace.get("output", "0x").startswith(expected),
                         f"Expected {error}, got {trace.get('output', '0x')[:10]}")

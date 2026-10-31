@@ -548,7 +548,7 @@ class Campaign(Rehearsal):
                 "Claim-before-transfer paid the wrong amount")
         require(self.call(self.position.functions.ownerOf(1)) == self.bob, "Claim ordering transfer failed")
 
-        # At the exact deadline the final purchase always fails, regardless of transaction order,
+        # After the deadline the final purchase always fails, regardless of transaction order,
         # while the partial round settles against its original deadline beacon.
         deadline_version = self.new_config(self.weth, rewards=None, count=2, operator=0)
         deadline_round = self.open(deadline_version, 1, position=0)

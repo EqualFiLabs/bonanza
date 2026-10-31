@@ -1,4 +1,5 @@
 """Offline regression tests for safety and evidence gates; no chain or credentials needed."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,10 +8,14 @@ from web3 import Web3
 from web3.datastructures import AttributeDict
 
 from common import Rehearsal, local_url
+from rehearse import ATTEMPT_ARTIFACTS
 from scenarios import Campaign, allocation
 
 
 class RunnerSafetyTest(unittest.TestCase):
+    def test_resume_archives_same_block_submission_journal(self):
+        self.assertIn("same-block-submissions.jsonl", ATTEMPT_ARTIFACTS)
+
     def test_independent_split_model_covers_extremes_and_per_purchase_floors(self):
         cfg = ["asset", 1, 10, 60, 3, 10, 0, 2000, 0]
         self.assertEqual(allocation(cfg, [10], 8000), (10, 0, 2, 8, 0, 0))
@@ -49,7 +54,8 @@ class RunnerSafetyTest(unittest.TestCase):
         r.w3 = Mock()
         r.w3.eth.gas_price = 100_000_000
         r.w3.eth.wait_for_transaction_receipt.return_value = AttributeDict({
-            "transactionHash": bytes.fromhex("22" * 32), "status": status})
+            "transactionHash": bytes.fromhex("22" * 32), "status": status,
+            "blockNumber": 10, "transactionIndex": 0})
         fn = Mock()
         fn.address = "0x" + "33" * 20
         fn.abi = {"type": "function", "name": "mutate", "inputs": []}
@@ -73,6 +79,42 @@ class RunnerSafetyTest(unittest.TestCase):
                 r.same_block([{"fn": fn}])
             self.assertEqual(r.rpc.call_args_list[0].args, ("evm_setAutomine", [False]))
             self.assertEqual(r.rpc.call_args_list[-1].args, ("evm_setAutomine", [True]))
+
+    def test_same_block_second_send_failure_retains_first_submission_and_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, fn = self.transaction_fixture(directory, 1)
+            first_hash = bytes.fromhex("44" * 32)
+            r.w3.eth.get_transaction_count.return_value = 0
+            r.w3.eth.send_transaction.side_effect = [first_hash, RuntimeError("second send failed")]
+            r.rpc = Mock(return_value=True)
+            with self.assertRaisesRegex(RuntimeError, "second send failed"):
+                r.same_block([{"fn": fn}, {"fn": fn}])
+            receipt = Path(directory) / "receipts/00001.json"
+            submissions = Path(directory) / "same-block-submissions.jsonl"
+            self.assertTrue(receipt.exists())
+            self.assertIn("0x" + first_hash.hex(), submissions.read_text())
+            self.assertEqual(r.rpc.call_args_list[-1].args, ("evm_setAutomine", [True]))
+
+    def test_same_block_early_outcome_failure_retains_every_receipt_and_trace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, fn = self.transaction_fixture(directory, 1)
+            hashes = [bytes.fromhex("44" * 32), bytes.fromhex("55" * 32)]
+            receipts = [
+                AttributeDict({"transactionHash": hashes[0], "status": 0,
+                               "blockNumber": 10, "transactionIndex": 0}),
+                AttributeDict({"transactionHash": hashes[1], "status": 1,
+                               "blockNumber": 10, "transactionIndex": 1}),
+            ]
+            r.w3.eth.get_transaction_count.return_value = 0
+            r.w3.eth.send_transaction.side_effect = hashes
+            r.w3.eth.wait_for_transaction_receipt.side_effect = receipts
+            r.rpc = Mock(side_effect=lambda method, _: {"output": "0xdeadbeef"}
+                         if method == "debug_traceTransaction" else True)
+            with self.assertRaisesRegex(AssertionError, "Unexpected same-block revert"):
+                r.same_block([{"fn": fn}, {"fn": fn}])
+            first = json.loads((Path(directory) / "receipts/00001.json").read_text())
+            self.assertEqual(first["trace"]["output"], "0xdeadbeef")
+            self.assertTrue((Path(directory) / "receipts/00002.json").exists())
 
     def test_expected_revert_requires_correct_error_and_financial_rollback(self):
         with tempfile.TemporaryDirectory() as directory:
