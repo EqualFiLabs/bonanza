@@ -35,13 +35,16 @@ def upstream(method, params):
 
 
 def provenance(run, environment):
+    clean = subprocess.run(["git", "submodule", "foreach", "--quiet", "--recursive",
+        'test -z "$(git status --porcelain)"'], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    require(clean.returncode == 0, "Dependency working trees must be clean for reproducible artifacts")
     environment["sourceCommit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     environment["sourceDiffHash"] = plain(Web3.keccak(subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT)))
     paths = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], cwd=ROOT).decode().split("\0")
     sources = {name: plain(Web3.keccak((ROOT / name).read_bytes())) for name in paths if name and (ROOT / name).is_file()}
     write(run / "source-files.json", sources)
     environment["sourceFilesHash"] = plain(Web3.keccak(text=json.dumps(sources, sort_keys=True)))
-    environment["submodules"] = subprocess.check_output(["git", "submodule", "status"], cwd=ROOT, text=True).strip().splitlines()
+    environment["submodules"] = subprocess.check_output(["git", "submodule", "status", "--recursive"], cwd=ROOT, text=True).strip().splitlines()
     environment["tools"] = {tool: subprocess.check_output([tool, "--version"], text=True).splitlines()[0] for tool in ["forge", "anvil", "cast"]}
     write(run / "environment.json", environment)
 
@@ -153,7 +156,7 @@ def main():
         archive.mkdir()
         write(archive / "environment.json", json.loads((run / "environment.json").read_text()))
         for item in list(run.iterdir()):
-            if item.name in {"source-files.json", "receipts", "deployments.json", "summary.json", "results.json", "selector-coverage.json", "bindings.json", "fixture-provenance.json", "soak-actions.json"} or item.name.startswith("reconciliation-"):
+            if item.name in {"source-files.json", "receipts", "deployments.json", "summary.json", "results.json", "selector-coverage.json", "bindings.json", "fixture-provenance.json", "soak-actions.json", "protocol-self-call.json"} or item.name.startswith("reconciliation-"):
                 item.rename(archive / item.name)
         provenance(run, r.environment)
     else:

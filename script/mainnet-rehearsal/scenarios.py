@@ -4,6 +4,7 @@ import random
 import subprocess
 import time
 import urllib.request
+from fractions import Fraction
 from pathlib import Path
 
 from eth_utils.abi import abi_to_signature
@@ -13,6 +14,18 @@ from web3 import Web3
 from common import ROOT, Rehearsal, ZERO, ZERO32, WAD, MAX, write, plain, require
 
 HERE = Path(__file__).resolve().parent
+
+
+def allocation(config, quantities, staker_bps):
+    """Independent rational model from purchase sizes and the configured economic split."""
+    gross = sum(quantities) * config[1]
+    winner = int(gross * Fraction(config[6], 10000))
+    operator = int((gross - winner) * Fraction(config[7], 10000))
+    staker = sum(int(q * config[1] * Fraction(10000 - config[6], 10000)
+                     * Fraction(staker_bps, 10000)) for q in quantities)
+    remainder = gross - winner - operator - staker
+    tip = min(config[8], remainder)
+    return gross, winner, operator, staker, tip, remainder - tip
 
 
 def combined(artifacts):
@@ -144,8 +157,10 @@ class Campaign(Rehearsal):
                   [self.config(self.underlying), self.config(self.weth)])
         bindings = (self.underlying, self.position.address, self.operators.address, self.activation.address)
         data = initializer.functions.initializeWithFiddy(params, bindings)._encode_transaction_data()
-        self.tx(self.lottery.functions.diamondCut(cuts, initializer.address, HexBytes(data)))
+        receipt = self.tx(self.lottery.functions.diamondCut(cuts, initializer.address, HexBytes(data)))
         require(tuple(self.call(self.lottery.functions.fiddyBindings())) == bindings, "FIDDY binding mismatch")
+        self.initialization_evidence = {"transactionHash": plain(receipt.transactionHash),
+            "method": "LotteryInit.initializeWithFiddy", "bindingsVerified": True}
         for selector, row in self.installed.items():
             require(self.call(self.lottery.functions.facetAddress(HexBytes(selector))) == row["facet"], "Selector route mismatch")
         write(self.run / "selectors.json", self.installed)
@@ -205,6 +220,19 @@ class Campaign(Rehearsal):
 
     def settle(self, round_id, cached=False):
         record, signature = self.beacon(round_id)
+        f = self.lottery.functions
+        quantities, end = [], 0
+        for i in range(self.call(f.purchaseEntryCount(round_id))):
+            next_end = self.call(f.purchaseEntry(round_id, i))[1]
+            quantities.append(next_end - end)
+            end = next_end
+        gross, winner_amount, operator, staker, tip, treasury = allocation(
+            record[0], quantities, self.call(f.fiddyRoundConfig(round_id))[1])
+        require(end == record[8] and gross == record[12], "Purchase receipts mismatch")
+        require(self.call(f.fiddyRoundRevenue(round_id)) == staker, "Purchase-time staker allocation mismatch")
+        before = self.call(f.assetAccounting(record[0][0]))
+        before_tip = self.call(f.finalizerCredit(record[0][0], self.carol))
+        before_operator = self.call(f.pendingOperatorRevenue(record[2], record[0][0]))
         close = record[5] if record[10] == 2 else record[4]
         timestamp = max(close + 1, self.call(self.drand.functions.roundTime(record[7])))
         now = self.w3.eth.get_block("latest").timestamp
@@ -214,6 +242,13 @@ class Campaign(Rehearsal):
             self.tx(self.drand.functions.postSig(record[7], signature), self.carol)
         self.tx(self.lottery.functions.settleRound(round_id, b"" if cached else signature), self.carol)
         result = self.call(self.lottery.functions.round(round_id))
+        require(result[13] == winner_amount, "Winner allocation differs from purchase model")
+        after = self.call(f.assetAccounting(record[0][0]))
+        require(tuple(a - b for a, b in zip(after, before)) ==
+                (-gross + staker, winner_amount, 0, tip, operator, treasury), "Settlement split mismatch")
+        require(self.call(f.finalizerCredit(record[0][0], self.carol)) - before_tip == tip, "Finalizer split mismatch")
+        require(self.call(f.pendingOperatorRevenue(record[2], record[0][0])) - before_operator == operator,
+                "Operator split mismatch")
         require(result[10] == 3 and result[9] < result[8], "Settlement ticket outside sold range")
         require(self.call(self.lottery.functions.ticketOwner(round_id, result[9])) == result[11], "Winner ownership mismatch")
         return result
@@ -222,8 +257,26 @@ class Campaign(Rehearsal):
         record = self.call(self.lottery.functions.round(round_id))
         asset, winner, amount = record[0][0], record[11], record[13]
         before = self.call(self.token(asset).functions.balanceOf(winner))
-        self.tx(self.lottery.functions.claimWinner(round_id, winner), winner)
+        receipt = self.tx(self.lottery.functions.claimWinner(round_id, winner), winner)
         require(self.call(self.token(asset).functions.balanceOf(winner)) - before == amount, "Winner delta mismatch")
+        return receipt
+
+    def verify_protocol_self_call(self, receipt):
+        signature = "protocolMoveFiddy(address,address,uint256)"
+        selector = "0x" + Web3.keccak(text=signature)[:4].hex()
+        trace = self.rpc("debug_traceTransaction", [plain(receipt.transactionHash), {"tracer": "callTracer"}])
+        pending, matches = [trace], []
+        while pending:
+            node = pending.pop()
+            pending.extend(node.get("calls", []))
+            if (node.get("type") == "CALL" and node.get("from", "").lower() == self.lottery.address.lower()
+                    and node.get("to", "").lower() == self.lottery.address.lower()
+                    and node.get("input", "").startswith(selector) and not node.get("error")):
+                matches.append(node)
+        write(self.run / "protocol-self-call.json", {"transactionHash": plain(receipt.transactionHash), "trace": trace})
+        require(matches, "No successful authenticated protocol self-call in payout trace")
+        self.coverage.setdefault(signature, {"view": [], "success": [], "revert": []})["internal"] = [
+            {"scenario": self.scenario, "transactionHash": plain(receipt.transactionHash), "calls": len(matches)}]
 
     def flush(self):
         for asset in self.assets:
@@ -400,7 +453,7 @@ class Campaign(Rehearsal):
         self.tx(f.buyTickets(rid, 8), self.alice)
         self.settle(rid)
         self.tx(f.claimWinner(rid, self.bob), self.alice, error="ReceiverRestricted(address)", check=self.financial_state)
-        self.claim_round(rid)
+        self.verify_protocol_self_call(self.claim_round(rid))
         self.tx(f.claimFiddyRevenue(1, self.lottery.address, self.bob), self.alice,
                 error="ReceiverRestricted(address)", check=self.financial_state)
         self.tx(f.claimFiddyRevenue(1, self.lottery.address, self.alice), self.alice)
@@ -477,9 +530,13 @@ class Campaign(Rehearsal):
         self.tx(f.buyTicketsForPosition(rid, 0, 1), self.alice, error="InvalidTicketQuantity()", check=self.financial_state)
         # Winner-zero and winner-full, tiny-denomination and week-long configurations remain valid.
         for winner in [0, 10000]:
+            before_treasury = self.call(f.assetAccounting(self.hostile.address))[5]
             v = self.new_config(self.hostile.address, rewards=(0, 8000, False), price=1, winner=winner, tip=0)
             r = self.open(v, 10, position=0)
             self.settle(r)
+            require(self.call(f.round(r))[13] == (10 if winner == 10000 else 0), "Extreme winner split mismatch")
+            require(self.call(f.assetAccounting(self.hostile.address))[5] - before_treasury ==
+                    (8 if winner == 0 else 0), "Zero-weight staker share was not redirected to Treasury")
             if self.call(f.round(r))[13]:
                 self.claim_round(r)
         self.new_config(self.weth, duration=7 * 86400)
@@ -508,13 +565,18 @@ class Campaign(Rehearsal):
         opened = [self.open(v, 1, i + 1, [self.alice, self.bob][i]) for i, v in enumerate(versions)]
         action_log = []
         for step in range(self.environment["soakSteps"]):
+            before_count = self.counter
             mode = rng.randrange(6)
             position = rng.choice([1, 2])
             actor = self.call(self.position.functions.ownerOf(position))
             if mode == 0:
                 rid = rng.choice(opened)
                 r = self.call(f.round(rid))
-                if r[10] == 1 and self.w3.eth.get_block("latest").timestamp < r[4] and r[8] < 9:
+                if r[10] == 2 or self.w3.eth.get_block("latest").timestamp >= r[4]:
+                    self.settle(rid)
+                    self.claim_round(rid)
+                    opened[opened.index(rid)] = self.open(r[1], 1, position, actor)
+                else:
                     self.tx(f.buyTicketsForPosition(rid, 1, position), actor)
             elif mode == 1:
                 self.tx(f.checkpointFiddyAccount(position), self.carol)
@@ -529,7 +591,9 @@ class Campaign(Rehearsal):
                 self.tx(f.setPaused(True), self.guardian)
                 self.tx(f.setPaused(False))
             self.reconcile()
-            action_log.append({"step": step, "mode": mode, "position": position, "owner": actor})
+            require(self.counter > before_count, "Soak choice performed no transaction")
+            action_log.append({"step": step, "mode": mode, "position": position, "owner": actor,
+                               "firstReceipt": before_count + 1, "lastReceipt": self.counter})
             if step % 20 == 0:
                 print(f"Soak {step+1}/{self.environment['soakSteps']}: exact conservation", flush=True)
         for rid in opened:
@@ -567,6 +631,8 @@ class Campaign(Rehearsal):
             rid = self.open(version, 1, position=0)
             listed.append((token, rid))
             require(self.call(f.fiddyAsset(token.address))[1] == 500, "Capacity fixture revenue not booked")
+            if (index + 1) % 16 == 0:
+                print(f"Revenue capacity: {index + 1}/64 funded assets", flush=True)
         require(len(self.call(f.fiddyRevenueAssets())) == 64, "Revenue asset count mismatch")
         extra = self.deploy("RehearsalToken")
         before = self.call(f.latestLotteryConfigVersion())
@@ -597,9 +663,18 @@ class Campaign(Rehearsal):
             evidence = self.coverage.get(signature, {"view": [], "success": [], "revert": []})
             view = abi[signature]["stateMutability"] in ("view", "pure")
             satisfied = bool(evidence["view"] if view else evidence["success"])
-            if not satisfied and signature not in exceptions:
+            exception_evidence = None
+            errors = {e.get("expectedError") for e in evidence["revert"]}
+            if signature == "protocolMoveFiddy(address,address,uint256)":
+                exception_evidence = evidence.get("internal", [])
+                satisfied = bool(exception_evidence and "OnlyProtocol()" in errors)
+            elif signature == "initializeFiddy(address,address,address,address)":
+                exception_evidence = getattr(self, "initialization_evidence", None)
+                satisfied = bool(exception_evidence and {"AlreadyInitialized()", "NotAuthority(address)"} <= errors)
+            if not satisfied:
                 missing.append(signature)
-            report.append({**row, "evidence": evidence, "classification": exceptions.get(signature, "view" if view else "direct transaction")})
+            report.append({**row, "evidence": evidence, "exceptionEvidence": exception_evidence,
+                           "classification": exceptions.get(signature, "view" if view else "direct transaction")})
         write(self.run / "selector-coverage.json", report)
         require(not missing, "Missing direct selector coverage: " + ", ".join(missing))
         self.result("selector coverage", f"{len(report)} installed selectors classified with execution evidence")

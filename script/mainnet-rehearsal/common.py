@@ -57,7 +57,7 @@ class Rehearsal:
         self.counter = 0
         self.scenario = "deployment"
         self.coverage = {}
-        self.deployed = {}
+        self.deployed = []
         self.rounds = []
         self.positions = []
         self.assets = []
@@ -97,11 +97,12 @@ class Rehearsal:
             self.record_coverage(fn, "view", None)
         return result
 
-    def record_coverage(self, fn, kind, receipt):
+    def record_coverage(self, fn, kind, receipt, error=None):
         signature = abi_to_signature(fn.abi)
         row = self.coverage.setdefault(signature, {"view": [], "success": [], "revert": []})
         row[kind].append({"scenario": self.scenario,
-                          "transactionHash": plain(receipt["transactionHash"]) if receipt else None})
+                          "transactionHash": plain(receipt["transactionHash"]) if receipt else None,
+                          "expectedError": error})
 
     def tx(self, fn, sender=None, value=0, error=None, check=None, gas=12_000_000):
         self.guard()
@@ -135,7 +136,7 @@ class Rehearsal:
             require(receipt.status == 1, f"Unexpected mined revert: {row['signature']} tx {plain(receipt.transactionHash)}")
         write(path, row)
         if self.lottery and fn.address == self.lottery.address:
-            self.record_coverage(fn, "revert" if error else "success", receipt)
+            self.record_coverage(fn, "revert" if error else "success", receipt, error)
         return receipt
 
     def deploy(self, name, args=(), group="lottery"):
@@ -144,6 +145,10 @@ class Rehearsal:
         factory = self.w3.eth.contract(abi=artifact["abi"], bytecode=artifact["bytecode"]["object"])
         receipt = self.w3.eth.wait_for_transaction_receipt(factory.constructor(*args).transact(
             {"from": self.owner, "gas": 15_000_000, "gasPrice": max(self.w3.eth.gas_price, 100_000_000)}))
+        record = {"name": name, "group": group, "scenario": self.scenario,
+                  "address": receipt.contractAddress, "receipt": receipt, "constructorArguments": args}
+        self.deployed.append(record)
+        write(self.run / "deployments.json", self.deployed)
         require(receipt.status == 1, f"Deployment failed: {name}")
         contract = self.w3.eth.contract(address=receipt.contractAddress, abi=artifact["abi"])
         runtime = self.w3.eth.get_code(contract.address)
@@ -155,9 +160,7 @@ class Rehearsal:
                 start, size = entry["start"], entry["length"]
                 expected[start:start+size] = actual[start:start+size] = b"\0" * size
         require(expected == actual, f"Runtime mismatch: {name}")
-        self.deployed[contract.address] = {"name": name, "group": group,
-            "runtimeHash": Web3.keccak(runtime), "receipt": receipt,
-            "constructorArguments": args, "immutableMaskedRuntimeMatches": True}
+        record.update({"runtimeHash": Web3.keccak(runtime), "immutableMaskedRuntimeMatches": True})
         write(self.run / "deployments.json", self.deployed)
         return contract
 

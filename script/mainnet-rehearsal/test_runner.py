@@ -7,10 +7,37 @@ from web3 import Web3
 from web3.datastructures import AttributeDict
 
 from common import Rehearsal, local_url
-from scenarios import Campaign
+from scenarios import Campaign, allocation
 
 
 class RunnerSafetyTest(unittest.TestCase):
+    def test_independent_split_model_covers_extremes_and_per_purchase_floors(self):
+        cfg = ["asset", 1, 10, 60, 3, 10, 0, 2000, 0]
+        self.assertEqual(allocation(cfg, [10], 8000), (10, 0, 2, 8, 0, 0))
+        cfg[6] = 10000
+        self.assertEqual(allocation(cfg, [10], 8000), (10, 10, 0, 0, 0, 0))
+        cfg[6], cfg[8] = 5000, 1
+        self.assertEqual(allocation(cfg, [1, 1, 1], 5000), (3, 1, 0, 0, 1, 1))
+
+    def test_deployment_receipts_survive_address_reuse_and_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r, _ = self.transaction_fixture(directory, 1)
+            r.deployed = []
+            r.artifact = Mock(return_value={"abi": [], "bytecode": {"object": "0x6000"},
+                                            "deployedBytecode": {"object": "0x6000"}})
+            r.w3.eth.get_code.return_value = bytes.fromhex("6000")
+            receipt = AttributeDict({"contractAddress": "0x" + "44" * 20,
+                "status": 1, "transactionHash": bytes.fromhex("55" * 32)})
+            r.w3.eth.wait_for_transaction_receipt.return_value = receipt
+            r.deploy("First")
+            r.deploy("Second")
+            self.assertEqual([d["name"] for d in r.deployed], ["First", "Second"])
+            r.w3.eth.wait_for_transaction_receipt.return_value = AttributeDict({
+                "contractAddress": None, "status": 0, "transactionHash": bytes.fromhex("66" * 32)})
+            with self.assertRaisesRegex(AssertionError, "Deployment failed"):
+                r.deploy("Failed")
+            self.assertEqual(len(r.deployed), 3)
+
     def transaction_fixture(self, directory, status):
         r = Rehearsal.__new__(Rehearsal)
         r.run = Path(directory)
@@ -83,6 +110,21 @@ class RunnerSafetyTest(unittest.TestCase):
             r.run = Path(directory)
             with self.assertRaisesRegex(AssertionError, "Missing direct selector coverage"):
                 r.coverage_gate()
+
+    def test_coverage_exceptions_require_actual_evidence(self):
+        for name, types in [("protocolMoveFiddy", ["address", "address", "uint256"]),
+                            ("initializeFiddy", ["address"] * 4)]:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                r = Campaign.__new__(Campaign)
+                r.run = Path(directory)
+                signature = name + "(" + ",".join(types) + ")"
+                r.installed = {"12345678": {"signature": signature}}
+                r.coverage = {}
+                r.lottery = Mock()
+                r.lottery.abi = [{"type": "function", "name": name, "stateMutability": "nonpayable",
+                    "inputs": [{"name": "arg" + str(i), "type": t} for i, t in enumerate(types)], "outputs": []}]
+                with self.assertRaisesRegex(AssertionError, "Missing direct selector coverage"):
+                    r.coverage_gate()
 
 
 if __name__ == "__main__":
