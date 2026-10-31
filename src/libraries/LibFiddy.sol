@@ -2,9 +2,10 @@
 pragma solidity 0.8.30;
 
 import { IERC721 } from "openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import { IFiddyActivation } from "../interfaces/IFiddyProtocol.sol";
 import { IStaticsExternalModules } from "../interfaces/IStaticsExternalModules.sol";
 import { LibFiddyStorage } from "./LibFiddyStorage.sol";
-import { FiddyConfig, FiddyAccount } from "../shared/FiddyTypes.sol";
+import { FiddyBindings, FiddyConfig, FiddyAccount } from "../shared/FiddyTypes.sol";
 import { FiddyErrors } from "../shared/FiddyErrors.sol";
 
 library LibFiddy {
@@ -17,6 +18,30 @@ library LibFiddy {
         uint256 shortfall
     );
     event FiddyAccountAttached(uint256 indexed positionId);
+    event FiddyInitialized(
+        address underlying, address positionNFT, address operators, address registry
+    );
+
+    /// @dev One-time binding. Callers enforce Diamond authority.
+    function initialize(FiddyBindings memory bindings) internal {
+        LibFiddyStorage.State storage s = LibFiddyStorage.state();
+        if (s.underlying != address(0)) revert FiddyErrors.AlreadyInitialized();
+        if (
+            bindings.underlying.code.length == 0 || bindings.positionNFT.code.length == 0
+                || bindings.operators.code.length == 0 || bindings.registry.code.length == 0
+                || bindings.underlying == address(this)
+                || IFiddyActivation(bindings.registry).genesisCollection() != bindings.operators
+                || !IStaticsExternalModules(bindings.positionNFT)
+                    .supportsInterface(type(IStaticsExternalModules).interfaceId)
+        ) revert FiddyErrors.InvalidBinding();
+        s.underlying = bindings.underlying;
+        s.positionNFT = bindings.positionNFT;
+        s.operators = bindings.operators;
+        s.registry = bindings.registry;
+        emit FiddyInitialized(
+            bindings.underlying, bindings.positionNFT, bindings.operators, bindings.registry
+        );
+    }
 
     function enforceInitialized() internal view {
         if (LibFiddyStorage.state().underlying == address(0)) revert FiddyErrors.NotInitialized();

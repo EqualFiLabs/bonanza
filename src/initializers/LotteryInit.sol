@@ -3,11 +3,13 @@ pragma solidity 0.8.30;
 
 import { IGovernance } from "../interfaces/IGovernance.sol";
 import { LibDiamond } from "../libraries/LibDiamond.sol";
+import { LibFiddy } from "../libraries/LibFiddy.sol";
 import { LibLotteryConfig } from "../libraries/LibLotteryConfig.sol";
 import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
 import { LibOperatorFeeRouter } from "../libraries/LibOperatorFeeRouter.sol";
 import { LibReentrancy } from "../libraries/LibReentrancy.sol";
 import { Errors } from "../shared/Errors.sol";
+import { FiddyBindings } from "../shared/FiddyTypes.sol";
 import { IntegrationConfig, LotteryConfig } from "../shared/Types.sol";
 
 /// @notice Atomic initializer for a newly deployed Statics Lottery Diamond.
@@ -24,6 +26,18 @@ contract LotteryInit {
     }
 
     function initialize(InitParams calldata params) external {
+        _initialize(params);
+    }
+
+    /// @notice Also binds FIDDY, so the token is complete in the same transaction as the cut.
+    function initializeWithFiddy(InitParams calldata params, FiddyBindings calldata fiddy)
+        external
+    {
+        _initialize(params);
+        LibFiddy.initialize(fiddy);
+    }
+
+    function _initialize(InitParams calldata params) private {
         LibDiamond.enforceAuthority();
         address installedAuthority = LibDiamond.authority();
         if (params.authority != installedAuthority) {

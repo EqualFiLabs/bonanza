@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.30;
 
+struct FiddyBindings {
+    address underlying;
+    address positionNFT;
+    address operators;
+    address registry;
+}
+
 struct FiddyConfig {
     uint96 unitsPerTicket;
     uint16 stakerProtocolBps;

@@ -27,6 +27,7 @@ import { IOperatorFeeRouter } from "../src/interfaces/IOperatorFeeRouter.sol";
 import { IRevenue } from "../src/interfaces/IRevenue.sol";
 import { ISettlement } from "../src/interfaces/ISettlement.sol";
 import { FacetCut, FacetCutAction } from "../src/shared/DiamondTypes.sol";
+import { FiddyBindings } from "../src/shared/FiddyTypes.sol";
 import { IntegrationConfig, LotteryConfig } from "../src/shared/Types.sol";
 
 interface IConfiguredOperatorFeeRouter is IOperatorFeeRouter {
@@ -98,14 +99,17 @@ contract DeployLottery is Script {
         if (deployer != EXPECTED_DEPLOYER) revert UnexpectedDeployer(deployer);
 
         address operatorFeeRouter = vm.envAddress("LOTTERY_OPERATOR_FEE_ROUTER");
+        // The Statics PositionNFT that implements the external account module interface. FIDDY
+        // initialization verifies its code and interface in the same transaction as the cut.
+        address positionNFT = vm.envAddress("LOTTERY_FIDDY_POSITION_NFT");
         _validateDependencies(operatorFeeRouter);
 
         vm.startBroadcast(deployerKey);
-        deployment = _deploy(deployer, operatorFeeRouter);
+        deployment = _deploy(deployer, operatorFeeRouter, positionNFT);
         vm.stopBroadcast();
     }
 
-    function _deploy(address authority, address operatorFeeRouter)
+    function _deploy(address authority, address operatorFeeRouter, address positionNFT)
         internal
         returns (Deployment memory deployment)
     {
@@ -123,13 +127,14 @@ contract DeployLottery is Script {
         deployment.fiddyStakingFacet = address(new FiddyStakingFacet());
         deployment.fiddyViewFacet = address(new FiddyViewFacet());
 
-        _initializeDiamond(deployment, authority, operatorFeeRouter);
+        _initializeDiamond(deployment, authority, operatorFeeRouter, positionNFT);
     }
 
     function _initializeDiamond(
         Deployment memory deployment,
         address authority,
-        address operatorFeeRouter
+        address operatorFeeRouter,
+        address positionNFT
     ) internal {
         FacetCut[] memory cuts = new FacetCut[](10);
         cuts[0] = _cut(deployment.loupeFacet, _loupeSelectors());
@@ -156,9 +161,13 @@ contract DeployLottery is Script {
             lotteryConfigs: configs
         });
 
+        FiddyBindings memory fiddy =
+            FiddyBindings(STATICS, positionNFT, OPERATOR_COLLECTION, ACTIVATION_REGISTRY);
         IDiamondCut(deployment.diamond)
             .diamondCut(
-                cuts, deployment.initializer, abi.encodeCall(LotteryInit.initialize, (params))
+                cuts,
+                deployment.initializer,
+                abi.encodeCall(LotteryInit.initializeWithFiddy, (params, fiddy))
             );
     }
 

@@ -242,7 +242,9 @@ unchanged; reward extensions use a separate namespace and default to zero for ex
 
 The deployment script initializes FIDDY in the same transaction as the Diamond cut through
 `LotteryInit.initializeWithFiddy`, binding STATICS, the PositionNFT, the Operator collection
-and the activation registry. A freshly deployed Diamond therefore reports STATICS's decimals
+and the activation registry. It reads the PositionNFT address from
+`LOTTERY_FIDDY_POSITION_NFT`; initialization verifies its code and module interface and reverts
+the whole cut otherwise. A freshly deployed Diamond therefore reports STATICS's decimals
 immediately. Upgrades that add FIDDY to an existing Diamond use the one-time
 `initializeFiddy(STATICS, PositionNFT, Operators, activationRegistry)`. Initialization enables
 no reward configuration. Both conversions, wrap capacity, boosts and external consumer

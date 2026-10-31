@@ -14,15 +14,11 @@ import { LibDiamond } from "../libraries/LibDiamond.sol";
 import { LibReentrancy } from "../libraries/LibReentrancy.sol";
 import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
 import { LibExactToken } from "../libraries/LibExactToken.sol";
-import { IFiddyActivation } from "../interfaces/IFiddyProtocol.sol";
-import { IStaticsExternalModules } from "../interfaces/IStaticsExternalModules.sol";
+import { FiddyBindings } from "../shared/FiddyTypes.sol";
 import { FiddyErrors } from "../shared/FiddyErrors.sol";
 import { Errors } from "../shared/Errors.sol";
 
 contract FiddyTokenFacet is ERC20Upgradeable {
-    event FiddyInitialized(
-        address underlying, address positionNFT, address operators, address registry
-    );
     event FiddyConsumerSet(address indexed consumer, bool allowed);
     event FiddyReserveFunded(address indexed funder, uint256 amount);
     event FiddyConversionsSet(bool wrapEnabled, bool unwrapEnabled, uint256 wrapCap);
@@ -63,21 +59,7 @@ contract FiddyTokenFacet is ERC20Upgradeable {
         address registry_
     ) external guarded {
         LibDiamond.enforceAuthority();
-        LibFiddyStorage.State storage s = LibFiddyStorage.state();
-        if (s.underlying != address(0)) revert FiddyErrors.AlreadyInitialized();
-        if (
-            underlying_.code.length == 0 || positionNFT_.code.length == 0
-                || operators_.code.length == 0 || registry_.code.length == 0
-                || underlying_ == address(this)
-                || IFiddyActivation(registry_).genesisCollection() != operators_
-                || !IStaticsExternalModules(positionNFT_)
-                    .supportsInterface(type(IStaticsExternalModules).interfaceId)
-        ) revert FiddyErrors.InvalidBinding();
-        s.underlying = underlying_;
-        s.positionNFT = positionNFT_;
-        s.operators = operators_;
-        s.registry = registry_;
-        emit FiddyInitialized(underlying_, positionNFT_, operators_, registry_);
+        LibFiddy.initialize(FiddyBindings(underlying_, positionNFT_, operators_, registry_));
     }
 
     function setFiddyConsumer(address consumer, bool allowed) external {
