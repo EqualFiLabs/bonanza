@@ -233,18 +233,50 @@ public wraps, not total wrapped supply. Every unit stays fully backed either way
 Actual-candidate local integration and block-pinned fork evidence are separate from
 deployment. This extension authorizes no live transactions or conversion activation.
 
-A candidate-local formal campaign supplements the historical reports. Against the production
-FIDDY implementations, it proves that supply equals allocated backing across the modeled token
-transitions, reserve funding changes supply, backing and inventory together, participation moves
-existing inventory into account custody, and booking a full staker share conserves reserved plus
-Treasury value. It also proves zero-accrual boost forfeiture clears registration and restores base
-weight. Full-width settlement rules prove the per-purchase staker bound, aggregate settleability,
-five-way allocation conservation, and escrow reclassification without double counting.
+### Formal verification summary
 
-The stronger nonzero-accrual boost-forfeiture theorem and the FIDDY Halmos partitions did not
-finish within their execution bounds and are not counted as proof. Concrete nonzero-accrual boost,
-booking and settlement fuzz controls passed 1,024 runs each. Generated specifications, logs and
-reports remain in private local evidence; this paragraph is the versioned summary.
+A candidate-bound campaign supplements the historical reports. It binds production source at
+`de6b9b713d5de2f8e4a297e1c16a9992ecc5b3db`, tree
+`3276d74d4f88c8a39087bddfd17ed40c613a6d8f`, to Solidity 0.8.30 and these deployed-bytecode
+SHA-256 hashes:
+
+```text
+FiddyStakingFacet  426f1d1f92597ed28efd25083578e8dc92457ee05578ab564bf8f2e833879280
+FiddyTokenFacet    b84177b385fe3b706ecf0621032a222aa433de3d6d5d1f368b395af2e5eb7d8c
+LotteryFacet       376a1ab2a9b55b424f27fc6b7ffe852eaf9863c28d36505a9d7b76daefe826d6
+RevenueFacet       36891f8a1582f9050e15b32af4ebb4fa0240c18bbc1b88a40d8f6239ec3e4547
+SettlementFacet    f4bdc1a9ad4569711eb4e07c0abe6357b7210431b066a9160934653a2f6360a7
+```
+
+Certora verifies the following production transitions:
+
+- reserve funding, participation, public wrap and unwrap preserve one-to-one backing and move
+  supply, inventory, custody and outstanding wrap accounting together;
+- every FIDDY Payment Token category is counted once and surplus absorption cannot consume any
+  category;
+- initialization binds once, preserves legacy state, leaves every optional feature disabled,
+  rolls back invalid bindings and uses a namespace distinct from existing Lottery storage;
+- allowance cannot bypass restricted transfer rules, consumers cannot withdraw protocol custody,
+  and exact protocol movement capabilities reject mismatch, replay, external callers and leaked
+  authorization after revert;
+- PositionNFT transfer preserves account state while moving authority, failed attachment and
+  detachment roll back atomically, cleanup rejects whole claims and surrenders only sub-unit dust;
+- reward snapshots are immutable, issuance is inventory-capped without debt, opening and later
+  participation use equivalent snapshots, repeat asset listing is idempotent and the 65th distinct
+  revenue asset is rejected;
+- bounded stake-lock rules prove first-stake initialization, safe timestamp conversion, no lock
+  shortening and immediate relocking for nonzero top-ups when prior stake is at most `uint128`;
+- booking and zero-accrual boost forfeiture conserve reserved plus Treasury value, while full-width
+  settlement rules prove the per-purchase staker bound, aggregate settleability, five-way
+  allocation conservation and escrow reclassification without double counting.
+
+The full-width `uint256` Halmos relock partition did not finish within its 2,100-second bound and
+is not counted here. The stronger nonzero-accrual boost-forfeiture theorem also remains open.
+Concrete nonzero-accrual boost, booking and settlement fuzz controls passed 1,024 runs each. The
+formal models use deterministic exact-transfer token and PositionNFT peers; the 64-asset boundary
+is unrolled through its required exit check. Certora CLI 8.18.0 uses the pinned prover revision
+`f5f77783430449791186f7812ebd53addf22cabd` with Z3 4.16.0. Generated specifications, logs and
+reports remain in private evidence; this section is the versioned summary.
 
 ## Client and deployment preparation
 
