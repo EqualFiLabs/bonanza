@@ -70,7 +70,7 @@ struct AssetAccounting {
     uint256 activeRoundEscrow;
     uint256 winnerLiability;
     uint256 recipientLiability;
-    uint256 refundLiability; // Reserved legacy storage slot; always zero for new rounds.
+    uint256 refundLiability; // Unused and always zero; not a preserved slot in this layout.
     uint256 finalizerLiability;
     uint256 pendingOperatorRevenueTotal;
     uint256 treasuryAvailable;

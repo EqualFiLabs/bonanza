@@ -31,7 +31,7 @@ For each admitted token address `asset`, the Diamond stores:
 | `activeRoundEscrow` | Ticket receipts still backing open or sold-out Rounds |
 | `winnerLiability` | Settled proceeds not yet claimed by winners |
 | `recipientLiability` | Settled round allocations not yet delivered to their fixed recipients |
-| `refundLiability` | Reserved legacy slot; zero for fresh deadline-draw deployments |
+| `refundLiability` | Unused field kept in the ledger; always zero for deadline-draw rounds |
 | `finalizerLiability` | Recorded settlement tips not yet claimed |
 | `pendingOperatorRevenueTotal` | Operator proceeds not yet accepted by a Router |
 | `treasuryAvailable` | Treasury proceeds or absorbed surplus not yet delivered |

@@ -416,7 +416,7 @@ A settled Round state from which ticket purchases can never resume. The legacy e
 4. THE Lottery SHALL expose ticket sales progress.
 5. THE Lottery SHALL expose the scheduled Quicknet Round from opening and emit every deterministic early-Sellout rescheduling.
 6. THE Lottery SHALL expose the winning ticket and winner after settlement.
-7. THE Lottery SHALL expose outstanding winner, Finalizer, Treasury, and Operator accounting by token needed to verify solvency, retaining the reserved refund-liability field for storage compatibility.
+7. THE Lottery SHALL expose outstanding winner, Finalizer, Treasury, and Operator accounting by token needed to verify solvency, retaining the unused refund-liability field, which stays zero.
 8. THE Lottery SHALL emit events sufficient for an indexer to reconstruct Round opening, purchases, Sellout, randomness commitment, settlement, claims, deadline scheduling, configuration changes, Treasury movement, and Operator revenue flushing.
 
 ### Requirement 22: External Dependency Isolation
