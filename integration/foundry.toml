@@ -1,0 +1,27 @@
+[profile.default]
+src = "statics"
+test = "empty"
+script = "empty"
+out = "../out-statics"
+libs = ["../lib/statics/lib"]
+cache_path = "../cache-statics"
+allow_paths = ["../lib/statics"]
+remappings = [
+    "pinned-statics/=../lib/statics/",
+    "@openzeppelin/contracts/=../lib/statics/lib/openzeppelin-contracts/contracts/",
+    "@openzeppelin/contracts-upgradeable/=../lib/statics/lib/openzeppelin-contracts-upgradeable/contracts/",
+    "@uniswap/v4-core/=../lib/statics/lib/v4-periphery/lib/v4-core/",
+    "@uniswap/v4-periphery/=../lib/statics/lib/v4-periphery/",
+    "forge-std/=../lib/statics/lib/forge-std/src/",
+    "openzeppelin-contracts/=../lib/statics/lib/v4-periphery/lib/v4-core/lib/openzeppelin-contracts/",
+    "permit2/=../lib/statics/lib/v4-periphery/lib/permit2/",
+    "solmate/=../lib/statics/lib/v4-periphery/lib/v4-core/lib/solmate/"
+]
+auto_detect_solc = true
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = "none"
+[fmt]
+line_length = 120
+tab_width = 4

@@ -159,6 +159,21 @@ contract LotteryInitTest is Test {
         _initialize(params);
     }
 
+    function test_RejectsFiddyPricedOperatorShareWithoutConsumerRouter() public {
+        LotteryInit.InitParams memory params = _validParams();
+        params.lotteryConfigs[1].paymentToken = address(diamond);
+        bytes memory reason = abi.encodeWithSelector(
+            Errors.OperatorRouterUnavailable.selector, address(router), address(diamond)
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(Errors.InitializationFailed.selector, reason));
+        _initialize(params);
+
+        params.lotteryConfigs[1].operatorProtocolBps = 0;
+        _initialize(params);
+        assertEq(ILotteryView(address(diamond)).latestLotteryConfigVersion(), 2);
+    }
+
     function _initialize(LotteryInit.InitParams memory params) internal {
         FacetCut[] memory cuts = new FacetCut[](3);
         cuts[0] = _cut(address(governanceFacet), _governanceSelectors());

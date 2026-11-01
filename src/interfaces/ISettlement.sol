@@ -14,6 +14,10 @@ interface ISettlement {
         uint256 treasuryAmount,
         uint256 finalizerTip
     );
+    /// @notice Staker revenue booked by the round's purchases and excluded from Treasury.
+    event StakerRevenueSettled(
+        uint256 indexed roundId, address indexed paymentToken, uint256 amount
+    );
 
     function settleRound(uint256 roundId, bytes calldata quicknetSignature)
         external

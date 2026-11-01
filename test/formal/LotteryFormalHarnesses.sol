@@ -270,7 +270,7 @@ contract LotterySettlementHarness is SettlementFacet {
         uint64 finalizerTip
     ) external pure returns (AllocationObservation memory result) {
         SettlementAmounts memory amounts =
-            _allocateValues(gross, winnerBps, operatorBps, finalizerTip);
+            _allocateValues(gross, winnerBps, operatorBps, 0, finalizerTip);
         result = AllocationObservation({
             winner: amounts.winner,
             operator: amounts.operator,
@@ -307,7 +307,7 @@ contract LotterySettlementHarness is SettlementFacet {
         accountingStorage.assetAccounting[address(isolatedToken)].treasuryAvailable = 17;
 
         SettlementAmounts memory amounts =
-            _allocateValues(gross, winnerBps, operatorBps, finalizerTip);
+            _allocateValues(gross, winnerBps, operatorBps, 0, finalizerTip);
         _recordSettlement(gs, round, 0, msg.sender, keccak256("formal settlement"), amounts);
 
         result.paymentAccounting = accountingStorage.assetAccounting[address(paymentToken)];

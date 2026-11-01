@@ -8,6 +8,7 @@ solc = "0.8.30"
 evm_version = "osaka"
 optimizer = true
 optimizer_runs = 200
+fs_permissions = [{ access = "read", path = "./out-statics" }, { access = "read", path = "./out-legacy" }, { access = "read", path = "./lib/statics/deployments" }]
 
 [profile.ci.fuzz]
 runs = 1024

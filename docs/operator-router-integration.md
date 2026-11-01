@@ -18,7 +18,10 @@ and cross-referenced by the Lottery deployment evidence.
 Before a Round whose configuration has a nonzero Operator allocation can open, the Lottery checks
 that the selected Router has completed bootstrap, has nonzero effective Operator weight, and marks
 the Round's Payment Token as registered and deposit-enabled. The same conditions are checked again
-before funding.
+before funding. When the Payment Token is FIDDY, the Router must also be an approved FIDDY consumer:
+FIDDY transfers are restricted, and the Router can only pay Operators if it is approved. This rule
+is enforced at configuration creation, at opening and at every funding attempt, so FIDDY Operator
+revenue waits in the Lottery, retryable, rather than becoming stuck in the Router.
 
 Settlement never calls the Router. It records Operator revenue by integration version and Payment
 Token. A later permissionless flush reduces that exact liability, approves only the requested

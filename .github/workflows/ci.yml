@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1
@@ -29,10 +30,21 @@ jobs:
           version: v1.8.1
 
       - name: Check formatting
-        run: forge fmt --check
+        run: |
+          forge fmt --check
+          forge fmt --root integration --check
+
+      - name: Build pre-FIDDY upgrade baseline
+        run: bash script/build-legacy-baseline.sh
+
+      - name: Build pinned Statics candidate independently
+        run: forge build --config-path integration/foundry.toml
 
       - name: Build
         run: forge build
+
+      - name: Verify shared ABI parity
+        run: python3 script/check-statics-abi.py
 
       - name: Run lint
         run: forge lint

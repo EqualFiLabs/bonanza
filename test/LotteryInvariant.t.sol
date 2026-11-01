@@ -23,6 +23,8 @@ import {
     IntegrationToken,
     LotteryIntegrationSetup
 } from "./utils/LotteryIntegrationSetup.sol";
+import { FiddySetup } from "./utils/FiddySetup.sol";
+import { FiddyAsset, FiddyConfig, FiddyCredit } from "../src/shared/FiddyTypes.sol";
 
 contract LotteryRevenueFuzzTest is LotteryIntegrationSetup {
     function testFuzz_RevenueConservation(
@@ -135,6 +137,7 @@ contract LotteryStateHandler is Test {
     address internal immutable authority;
     address internal immutable alice;
     address internal immutable bob;
+    uint64 internal immutable firstVersion;
 
     uint256[] internal openedRounds;
     mapping(uint256 roundId => bytes32 snapshotHash) internal initialSnapshotHash;
@@ -148,7 +151,8 @@ contract LotteryStateHandler is Test {
         ConfiguredDrandRegistry registry_,
         IntegrationEndpoint router_,
         IntegrationToken tokenA_,
-        IntegrationToken tokenB_
+        IntegrationToken tokenB_,
+        uint64 firstVersion_
     ) {
         governance = IGovernance(diamond);
         lottery = ILottery(diamond);
@@ -163,6 +167,7 @@ contract LotteryStateHandler is Test {
         router = router_;
         tokenA = tokenA_;
         tokenB = tokenB_;
+        firstVersion = firstVersion_;
     }
 
     function openRound(uint256 rawConfig, uint256 rawQuantity, uint256 actorSeed) external {
@@ -170,7 +175,7 @@ contract LotteryStateHandler is Test {
         if (lotteryView.maxActiveRounds() == 0) return;
         if (lotteryView.activeRoundCount() >= lotteryView.maxActiveRounds()) return;
 
-        uint64 version = uint64(bound(rawConfig, 1, 2));
+        uint64 version = uint64(bound(rawConfig, firstVersion, firstVersion + 1));
         if (lotteryView.activeRoundForConfig(version) != 0) return;
         (LotteryConfig memory config, bool enabled) = lotteryView.lotteryConfig(version);
         if (!enabled) return;
@@ -269,7 +274,7 @@ contract LotteryStateHandler is Test {
     }
 
     function setConfigEnabled(uint256 rawConfig, uint256 rawEnabled) external {
-        uint64 version = uint64(bound(rawConfig, 1, 2));
+        uint64 version = uint64(bound(rawConfig, firstVersion, firstVersion + 1));
         vm.prank(authority);
         governance.setLotteryConfigEnabled(version, rawEnabled % 2 == 0);
     }
@@ -336,7 +341,7 @@ contract LotteryInvariantTest is StdInvariant, LotteryIntegrationSetup {
     function setUp() public override {
         super.setUp();
         handler = new LotteryStateHandler(
-            address(diamond), authority, alice, bob, registry, router, tokenA, tokenB
+            address(diamond), authority, alice, bob, registry, router, tokenA, tokenB, 1
         );
 
         bytes4[] memory selectors = new bytes4[](12);
@@ -444,5 +449,101 @@ contract LotteryInvariantTest is StdInvariant, LotteryIntegrationSetup {
                 value.expiresAt
             )
         );
+    }
+}
+
+/// @notice Concurrent reward rounds in two Payment Tokens, each booking a staker share at purchase.
+contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
+    uint256 internal constant RAY = 1e27;
+    LotteryStateHandler internal handler;
+
+    function setUp() public override {
+        super.setUp();
+        _wrap(1, alice, 100);
+        _wrap(2, bob, 70);
+        vm.prank(alice);
+        staking.stakeFiddy(1, 100);
+        vm.prank(bob);
+        staking.stakeFiddy(2, 70);
+        LotteryConfig memory configA = _config(address(tokenA), 10, 10, 10, 1 days, 30);
+        configA.winnerBps = 5000;
+        configA.operatorProtocolBps = 4000;
+        LotteryConfig memory configB = _config(address(tokenB), 7, 13, 5, 2 days, 0);
+        configB.winnerBps = 7000;
+        configB.operatorProtocolBps = 2500;
+        vm.startPrank(authority);
+        uint64 first = governance.createRewardLotteryConfig(configA, FiddyConfig(0, 6000, false));
+        governance.createRewardLotteryConfig(configB, FiddyConfig(0, 7500, false));
+        governance.setLotteryConfigEnabled(first, true);
+        governance.setLotteryConfigEnabled(first + 1, true);
+        vm.stopPrank();
+        tokenA.mint(alice, 1e24);
+        tokenA.mint(bob, 1e24);
+        tokenB.mint(alice, 1e24);
+        tokenB.mint(bob, 1e24);
+        handler = new LotteryStateHandler(
+            address(diamond), authority, alice, bob, registry, router, tokenA, tokenB, first
+        );
+
+        bytes4[] memory selectors = new bytes4[](11);
+        selectors[0] = LotteryStateHandler.openRound.selector;
+        selectors[1] = LotteryStateHandler.buyTickets.selector;
+        selectors[2] = LotteryStateHandler.advanceTime.selector;
+        selectors[3] = LotteryStateHandler.settleRound.selector;
+        selectors[4] = LotteryStateHandler.claimWinner.selector;
+        selectors[5] = LotteryStateHandler.claimFinalizer.selector;
+        selectors[6] = LotteryStateHandler.flushOperator.selector;
+        selectors[7] = LotteryStateHandler.flushTreasury.selector;
+        selectors[8] = LotteryStateHandler.setPaused.selector;
+        selectors[9] = LotteryStateHandler.setConfigEnabled.selector;
+        selectors[10] = LotteryStateHandler.setMaxActiveRounds.selector;
+        targetContract(address(handler));
+        targetSelector(FuzzSelector({ addr: address(handler), selectors: selectors }));
+    }
+
+    function invariant_RewardRoundsKeepPerTokenEscrowAndRevenueExact() public view {
+        (, uint256 backing,,,,,) = fiddyView.fiddyReserve();
+        _assertToken(address(tokenA), backing);
+        _assertToken(address(tokenB), 0);
+    }
+
+    function _assertToken(address asset, uint256 backing) private view {
+        AssetAccounting memory accounting = stateView.assetAccounting(asset);
+        FiddyAsset memory book = fiddyView.fiddyAsset(asset);
+        uint256 accounted = accounting.activeRoundEscrow + accounting.winnerLiability
+            + accounting.finalizerLiability + accounting.pendingOperatorRevenueTotal
+            + accounting.treasuryAvailable + book.reserved + backing;
+        assertEq(IntegrationToken(asset).balanceOf(address(diamond)), accounted);
+        assertEq(revenue.availableTokenSurplus(asset), 0);
+
+        uint256 escrow;
+        uint256 winnerLiability;
+        uint256 booked;
+        uint256 count = handler.roundCount();
+        for (uint256 i; i < count; ++i) {
+            uint256 roundId = handler.roundIdAt(i);
+            Round memory current = stateView.round(roundId);
+            if (current.config.paymentToken != asset) continue;
+            uint256 staker = fiddyView.fiddyRoundRevenue(roundId);
+            booked += staker;
+            if (current.status == RoundStatus.Open || current.status == RoundStatus.SoldOut) {
+                escrow += current.receipts - staker;
+            } else if (current.status == RoundStatus.Settled) {
+                winnerLiability += current.winnerClaimable;
+            }
+        }
+        assertEq(accounting.activeRoundEscrow, escrow);
+        assertEq(accounting.winnerLiability, winnerLiability);
+        // Stakers never claim in this handler, so booked revenue is reserved less whole dust.
+        assertLe(book.reserved, booked);
+        assertLe(booked - book.reserved, accounting.treasuryAvailable);
+
+        uint256 scaled = book.dustRay;
+        for (uint256 id = 1; id <= 2; ++id) {
+            FiddyCredit memory c = fiddyView.fiddyCredit(id, asset);
+            scaled += c.claimable * RAY + c.remainderRay + fiddyView.fiddyAccount(id).weight
+            * (book.indexRay - c.paidIndex);
+        }
+        assertEq(book.reserved * RAY, scaled);
     }
 }

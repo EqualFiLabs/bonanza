@@ -26,4 +26,9 @@ interface ILottery {
         external
         returns (uint256 roundId);
     function buyTickets(uint256 roundId, uint32 ticketQuantity) external;
+    function openRoundForPosition(uint64 configVersion, uint32 ticketQuantity, uint256 positionId)
+        external
+        returns (uint256 roundId);
+    function buyTicketsForPosition(uint256 roundId, uint32 ticketQuantity, uint256 positionId)
+        external;
 }

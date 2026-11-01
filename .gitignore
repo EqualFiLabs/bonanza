@@ -14,3 +14,9 @@ __pycache__/
 /formal/results/
 /formal/evidence/
 /formal/reports/
+
+out-statics/
+cache-statics/
+
+/.legacy-build/
+/out-legacy/
