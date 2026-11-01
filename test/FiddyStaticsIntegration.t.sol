@@ -6,6 +6,7 @@ import { IERC721 } from "openzeppelin-contracts/contracts/token/ERC721/IERC721.s
 import { IERC165 } from "openzeppelin-contracts/contracts/utils/introspection/IERC165.sol";
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import { IStaticsExternalModules } from "../src/interfaces/IStaticsExternalModules.sol";
+import { IDiamondLoupe } from "../src/interfaces/IDiamondLoupe.sol";
 import { FiddyConfig } from "../src/shared/FiddyTypes.sol";
 import { Round } from "../src/shared/Types.sol";
 import { FiddyErrors } from "../src/shared/FiddyErrors.sol";
@@ -63,8 +64,7 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         bytes4 previous = reduced;
         for (uint256 i; i < removed.length; ++i) {
             previous ^= removed[i];
-            (bool ok,) = address(core).staticcall(abi.encodeWithSelector(removed[i]));
-            assertFalse(ok);
+            assertEq(IDiamondLoupe(address(core)).facetAddress(removed[i]), address(0));
         }
         assertFalse(IERC165(address(core)).supportsInterface(previous));
     }
