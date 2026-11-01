@@ -269,6 +269,88 @@ contract LotteryRecipientTest is FiddySetup {
         assertEq(asset.balanceOf(address(diamond)), 0);
     }
 
+    function testBlockedRecipientClaimsToChosenReceiverWhilePaused() public {
+        RecipientToken asset = new RecipientToken();
+        _fundAndApprove(asset, alice);
+        router.setAsset(address(asset), true, true);
+        uint256 id = _open(_recipientConfig(address(asset)), 0, 100);
+        address recovery = makeAddr("recipient recovery");
+        vm.startPrank(beneficiary);
+        vm.expectRevert(abi.encodeWithSelector(Errors.RoundNotFound.selector, 999));
+        revenue.claimRecipientRevenue(999, recovery);
+        vm.expectRevert(abi.encodeWithSelector(Errors.RoundNotSettled.selector, id));
+        revenue.claimRecipientRevenue(id, recovery);
+        vm.stopPrank();
+
+        _settle(id);
+        asset.configure(beneficiary, 0, address(0), 0);
+        vm.expectRevert("recipient blocked");
+        revenue.flushRecipientRevenue(id);
+        address[3] memory outsiders = [stateView.round(id).winner, bob, authority];
+        for (uint256 i; i < outsiders.length; ++i) {
+            vm.prank(outsiders[i]);
+            vm.expectRevert(abi.encodeWithSelector(Errors.NotRecipient.selector, outsiders[i]));
+            revenue.claimRecipientRevenue(id, outsiders[i]);
+        }
+        vm.startPrank(beneficiary);
+        vm.expectRevert(Errors.InvalidAddress.selector);
+        revenue.claimRecipientRevenue(id, address(0));
+        vm.expectRevert(Errors.InvalidAddress.selector);
+        revenue.claimRecipientRevenue(id, address(diamond));
+        for (uint8 mode = 1; mode <= 2; ++mode) {
+            asset.configure(beneficiary, mode, address(0), 0);
+            vm.expectPartialRevert(Errors.InexactTokenTransfer.selector);
+            revenue.claimRecipientRevenue(id, recovery);
+        }
+        asset.configure(beneficiary, 0, address(diamond), id);
+        vm.expectRevert(Errors.Reentrancy.selector);
+        revenue.claimRecipientRevenue(id, recovery);
+        vm.stopPrank();
+        assertEq(stateView.round(id).recipientClaimable, 4500);
+        assertEq(stateView.assetAccounting(address(asset)).recipientLiability, 4500);
+        assertEq(asset.balanceOf(recovery), 0);
+
+        asset.configure(beneficiary, 0, address(0), 0);
+        vm.prank(guardian);
+        governance.setPaused(true);
+        vm.expectEmit(true, true, true, true, address(diamond));
+        emit IRevenue.RecipientRevenueClaimed(id, address(asset), beneficiary, recovery, 4500);
+        vm.prank(beneficiary);
+        assertEq(revenue.claimRecipientRevenue(id, recovery), 4500);
+        assertEq(asset.balanceOf(recovery), 4500);
+        assertEq(asset.balanceOf(beneficiary), 0);
+        assertEq(stateView.round(id).recipientClaimable, 0);
+        assertEq(stateView.assetAccounting(address(asset)).recipientLiability, 0);
+        vm.prank(beneficiary);
+        vm.expectRevert(Errors.NoRecipientRevenue.selector);
+        revenue.claimRecipientRevenue(id, recovery);
+        vm.expectRevert(Errors.NoRecipientRevenue.selector);
+        revenue.flushRecipientRevenue(id);
+        _close(id);
+        assertEq(asset.balanceOf(address(diamond)), 0);
+    }
+
+    function testFiddyRecipientClaimKeepsCallerOrTreasuryReceiver() public {
+        _wrap(1, alice, 10_000);
+        vm.prank(alice);
+        fiddy.withdrawFiddy(1, 10_000);
+        vm.prank(alice);
+        fiddy.approve(address(diamond), 10_000);
+        LotteryConfig memory config = _recipientConfig(address(diamond));
+        config.operatorProtocolBps = 0;
+        uint256 id = _open(config, 0, 100);
+        _settle(id);
+        vm.prank(beneficiary);
+        vm.expectRevert(abi.encodeWithSelector(FiddyErrors.ReceiverRestricted.selector, bob));
+        revenue.claimRecipientRevenue(id, bob);
+        vm.prank(beneficiary);
+        assertEq(revenue.claimRecipientRevenue(id, beneficiary), 4500);
+        assertEq(fiddy.balanceOf(beneficiary), 4500);
+        _close(id);
+        assertEq(fiddy.balanceOf(address(diamond)), 0);
+        assertEq(fiddy.totalSupply(), 10_000);
+    }
+
     function testRestrictedFiddyRecipientExitDoesNotRelaxWinnerTransfers() public {
         _wrap(1, alice, 10_000);
         vm.prank(alice);

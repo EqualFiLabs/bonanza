@@ -27,5 +27,6 @@ No chain deployment, public conversion activation, AMM construction or sibling-r
 - [x] Extend existing configuration/snapshot, round claim and per-token accounting structures directly; update creators, initialization builders and selectors (27.1, 27.4, 27.9).
 - [x] Validate recipient addresses and combined Operator/staker/recipient budgets; allocate and reserve actual receipts with Treasury-funded capped tips (27.2, 27.3, 27.5).
 - [x] Add permissionless fixed-recipient delivery with exact-token checks, pause-safe retry, FIDDY isolation, events and surplus protection (27.6, 27.7, 27.8).
+- [x] Let the snapshotted recipient claim its allocation to a receiver it chooses, keeping the FIDDY caller-or-Treasury rule (27.6, 27.8).
 - [x] Retire obsolete ABI upgrade fixtures and preserve historical formal material privately; add current-ABI lifecycle, hostile-token, fuzz and stateful conservation coverage (27.3-27.9).
 - [x] Complete focused checks and local review/remediation; require terminal PR CI before handoff. Existing formal evidence does not establish recipient behavior.

@@ -304,8 +304,13 @@ routing to Treasury and purchase-time booking remain unchanged.
 
 Anyone may call `flushRecipientRevenue(roundId)` to send the entire unpaid allocation to that
 round's fixed address. It uses the original Payment Token, remains available during pause, and
-cannot redirect or double-pay a claim. Exact-transfer failures revert atomically. Winner,
+cannot redirect or double-pay a claim. The recipient itself may instead call
+`claimRecipientRevenue(roundId, receiver)` to take the same full allocation to a receiver it
+chooses, also while paused. This recovers an allocation the fixed address can no longer receive,
+such as after an issuer freeze. No other account, including governance, can pick the receiver.
+Exact-transfer failures revert atomically. Winner,
 Treasury, finalizer and Operator payouts remain independent. FIDDY uses a fixed-recipient protocol
-exit; the receiver's ordinary transfers remain restricted. Recipient liabilities are excluded
+exit; the receiver's ordinary transfers remain restricted. A recipient-directed FIDDY claim pays
+only the recipient itself or the Treasury recipient. Recipient liabilities are excluded
 from absorbable surplus. This release requires fresh deployment; historical validators retain
 their deployment-specific tuple layouts.

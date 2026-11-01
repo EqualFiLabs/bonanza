@@ -19,8 +19,8 @@ authority. Consumer approval does not confer mint, redemption or reserve authori
 Revocation affects future ordinary transfers; consumers are trusted integration contracts
 and must not trap their users' holdings. No AMM is installed by this extension.
 
-Winner, finalizer-tip and staker revenue claims in FIDDY go to the caller or the governance
-Treasury recipient. Treasury delivery goes to its configured recipient. The dedicated Round
+Winner, finalizer-tip, staker revenue and recipient-directed claims in FIDDY go to the caller or
+the governance Treasury recipient. Treasury delivery goes to its configured recipient. The dedicated Round
 Recipient payout goes only to that Round's snapshotted recipient. Other Payment Tokens keep their arbitrary receiver
 semantics. Unwrapping pays STATICS and keeps its receiver parameter.
 

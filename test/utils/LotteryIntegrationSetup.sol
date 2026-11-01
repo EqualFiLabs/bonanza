@@ -318,13 +318,14 @@ abstract contract LotteryIntegrationSetup is Test {
     }
 
     function _revenueSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](6);
+        selectors = new bytes4[](7);
         selectors[0] = IRevenue.flushOperatorRevenue.selector;
         selectors[1] = IRevenue.flushTreasury.selector;
         selectors[2] = IRevenue.availableTokenSurplus.selector;
         selectors[3] = IRevenue.absorbTokenSurplus.selector;
         selectors[4] = IRevenue.flushNativeSurplus.selector;
         selectors[5] = IRevenue.flushRecipientRevenue.selector;
+        selectors[6] = IRevenue.claimRecipientRevenue.selector;
     }
 
     function _stateSelectors() internal pure returns (bytes4[] memory selectors) {

@@ -33,8 +33,9 @@ FIDDY is not planned as a launch Payment Token, but the code supports it under e
   every Router funding attempt. A failed funding attempt leaves the FIDDY in the Lottery and stays
   retryable.
 - Winner claims, finalizer-tip claims and staker revenue claims in FIDDY go only to the caller
-  or governance Treasury recipient. The dedicated Round Recipient payout goes only to its
-  snapshotted recipient, with no receiver override. This narrow exit preserves ordinary FIDDY
-  transfer restrictions.
+  or governance Treasury recipient. The permissionless Round Recipient flush goes only to its
+  snapshotted recipient. The recipient's own receiver-choosing claim follows the
+  caller-or-Treasury rule, so in FIDDY it pays only the recipient or Treasury. This narrow exit
+  preserves ordinary FIDDY transfer restrictions.
 - FIDDY reward inventory, account custody and reserved FIDDY staker revenue are counted alongside
   ordinary Lottery liabilities for surplus purposes.

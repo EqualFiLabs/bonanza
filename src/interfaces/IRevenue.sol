@@ -11,6 +11,13 @@ interface IRevenue {
     event RecipientRevenueFlushed(
         uint256 indexed roundId, address indexed asset, address indexed recipient, uint256 amount
     );
+    event RecipientRevenueClaimed(
+        uint256 indexed roundId,
+        address indexed asset,
+        address indexed recipient,
+        address receiver,
+        uint256 amount
+    );
     event TreasuryFlushed(address indexed asset, address indexed recipient, uint256 amount);
     event TokenSurplusAbsorbed(address indexed asset, uint256 amount);
     event NativeSurplusFlushed(address indexed recipient, uint256 amount);
@@ -19,6 +26,9 @@ interface IRevenue {
         external
         returns (uint256 flushed);
     function flushRecipientRevenue(uint256 roundId) external returns (uint256 flushed);
+    function claimRecipientRevenue(uint256 roundId, address receiver)
+        external
+        returns (uint256 claimed);
     function flushTreasury(address asset, uint256 amount) external returns (uint256 flushed);
     function availableTokenSurplus(address asset) external view returns (uint256);
     function absorbTokenSurplus(address asset) external returns (uint256 amount);

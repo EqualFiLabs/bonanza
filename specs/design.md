@@ -1289,7 +1289,7 @@ function pullExact(address asset, address from, uint256 amount) internal;
 function pushExact(address asset, address to, uint256 amount) internal;
 ```
 
-`pullExact` measures both the payer's spend and the Diamond's receipt. `pushExact` measures both the Diamond's spend and the receiver's receipt. Each function uses `SafeERC20` and reverts with `InexactTokenTransfer` unless both deltas equal `amount`. Purchases use `pullExact`; winner, finalizer, and Treasury transfers use `pushExact`. Router ingress uses `forceApprove` followed by `OperatorFeeRouter.addRewards`, whose reviewed implementation independently enforces exact contributor-spend and Router-receipt deltas.
+`pullExact` measures both the payer's spend and the Diamond's receipt. `pushExact` measures both the Diamond's spend and the receiver's receipt. Each function uses `SafeERC20` and reverts with `InexactTokenTransfer` unless both deltas equal `amount`. Purchases use `pullExact`; winner, finalizer, Treasury, and recipient-directed claim transfers use `pushExact`. Router ingress uses `forceApprove` followed by `OperatorFeeRouter.addRewards`, whose reviewed implementation independently enforces exact contributor-spend and Router-receipt deltas.
 
 # Pause Semantics
 
@@ -1307,6 +1307,8 @@ settleRound
 claimWinner
 claimFinalizerTips
 flushOperatorRevenue
+flushRecipientRevenue
+claimRecipientRevenue
 flushTreasury
 absorbTokenSurplus
 view functions
@@ -1367,6 +1369,8 @@ event RoundSettled(uint256 indexed roundId, uint32 indexed winningTicket, addres
 event WinnerClaimed(uint256 indexed roundId, address indexed winner, address indexed receiver, address paymentToken, uint256 amount);
 event FinalizerTipClaimed(address indexed finalizer, address indexed asset, address indexed receiver, uint256 amount);
 event OperatorRevenueFlushed(uint64 indexed integrationVersion, address indexed asset, address indexed caller, uint256 amount);
+event RecipientRevenueFlushed(uint256 indexed roundId, address indexed asset, address indexed recipient, uint256 amount);
+event RecipientRevenueClaimed(uint256 indexed roundId, address indexed asset, address indexed recipient, address receiver, uint256 amount);
 event TreasuryFlushed(address indexed asset, address indexed recipient, uint256 amount);
 event TokenSurplusAbsorbed(address indexed asset, uint256 amount);
 event GuardianUpdated(address indexed previousGuardian, address indexed newGuardian);
@@ -1654,13 +1658,22 @@ The combined bound ensures staker floors plus the recipient amount never exceed 
 claim, clears its entire claim and per-token liability before interacting, then sends exactly that
 amount to `round.config.recipient`. Anyone can call it, including while paused, but nobody can
 choose another receiver. A failure rolls back all changes. It emits
-`RecipientRevenueFlushed(roundId, paymentToken, recipient, amount)`. Settlement includes
+`RecipientRevenueFlushed(roundId, paymentToken, recipient, amount)`.
+
+`claimRecipientRevenue(uint256 roundId, address receiver) returns (uint256)` lets only the
+snapshotted recipient claim the same full allocation to a receiver it chooses, so an address that
+can no longer receive the Payment Token (for example after an issuer freeze) can still recover it.
+It rejects the zero address and the Diamond as receiver, reuses the settled-round and positive-claim
+checks, clears the claim and liability before interacting, and sends through `pushExact`. Governance
+and other accounts still cannot choose the receiver. It remains available while paused and emits
+`RecipientRevenueClaimed(roundId, paymentToken, recipient, receiver, amount)`. Settlement includes
 `recipientAmount` in `RoundSettled` and performs no token calls. Existing views expose the new
 fields, and surplus accounting includes the aggregate liability.
 
 For FIDDY, the fixed-recipient delivery is a separate narrowly scoped protocol movement using the
 existing exact movement capability and balance-delta checks. Generic payout receiver checks and
-restricted ordinary token transfers remain enforced. Historical manifests and their pinned
+restricted ordinary token transfers remain enforced; a recipient-directed FIDDY claim therefore
+pays only the recipient itself or the Treasury recipient. Historical manifests and their pinned
 validators describe older deployments and do not qualify this release.
 
 Example: `winnerBps = 5000`, `operatorProtocolBps = 500`, `recipientBps = 4500`, zero staker

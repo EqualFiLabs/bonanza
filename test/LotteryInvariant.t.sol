@@ -249,6 +249,18 @@ contract LotteryStateHandler is Test {
         revenue.flushRecipientRevenue(roundId);
     }
 
+    function claimRecipient(uint256 rawRound, uint256 receiverSeed) external {
+        uint256 roundId = _selectRound(rawRound);
+        if (roundId == 0) return;
+        Round memory current = lotteryView.round(roundId);
+        if (current.recipientClaimable == 0) return;
+        address receiver = receiverSeed % 2 == 0
+            ? current.config.recipient
+            : makeAddr("recipient chosen receiver");
+        vm.prank(current.config.recipient);
+        revenue.claimRecipientRevenue(roundId, receiver);
+    }
+
     function claimFinalizer(uint256 rawAsset) external {
         address asset = _asset(rawAsset);
         if (lotteryView.finalizerCredit(asset, address(this)) == 0) return;
@@ -362,7 +374,7 @@ contract LotteryInvariantTest is StdInvariant, LotteryIntegrationSetup {
             address(diamond), authority, alice, bob, registry, router, tokenA, tokenB, version
         );
 
-        bytes4[] memory selectors = new bytes4[](13);
+        bytes4[] memory selectors = new bytes4[](14);
         selectors[0] = LotteryStateHandler.openRound.selector;
         selectors[1] = LotteryStateHandler.buyTickets.selector;
         selectors[2] = LotteryStateHandler.advanceTime.selector;
@@ -376,6 +388,7 @@ contract LotteryInvariantTest is StdInvariant, LotteryIntegrationSetup {
         selectors[10] = LotteryStateHandler.updateIntegration.selector;
         selectors[11] = LotteryStateHandler.setMaxActiveRounds.selector;
         selectors[12] = LotteryStateHandler.flushRecipient.selector;
+        selectors[13] = LotteryStateHandler.claimRecipient.selector;
         targetContract(address(handler));
         targetSelector(FuzzSelector({ addr: address(handler), selectors: selectors }));
     }
@@ -512,7 +525,7 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
             address(diamond), authority, alice, bob, registry, router, tokenA, tokenB, first
         );
 
-        bytes4[] memory selectors = new bytes4[](12);
+        bytes4[] memory selectors = new bytes4[](13);
         selectors[0] = LotteryStateHandler.openRound.selector;
         selectors[1] = LotteryStateHandler.buyTickets.selector;
         selectors[2] = LotteryStateHandler.advanceTime.selector;
@@ -525,6 +538,7 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
         selectors[9] = LotteryStateHandler.setConfigEnabled.selector;
         selectors[10] = LotteryStateHandler.setMaxActiveRounds.selector;
         selectors[11] = LotteryStateHandler.flushRecipient.selector;
+        selectors[12] = LotteryStateHandler.claimRecipient.selector;
         targetContract(address(handler));
         targetSelector(FuzzSelector({ addr: address(handler), selectors: selectors }));
     }
