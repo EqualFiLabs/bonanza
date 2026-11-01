@@ -265,7 +265,10 @@ Certora verifies the following production transitions:
   participation use equivalent snapshots, repeat asset listing is idempotent and the 65th distinct
   revenue asset is rejected;
 - bounded stake-lock rules prove first-stake initialization, safe timestamp conversion, no lock
-  shortening and immediate relocking for nonzero top-ups when prior stake is at most `uint128`;
+  shortening and immediate relocking for nonzero top-ups when prior stake is at most `uint128`.
+  Three additional nonvacuous rules establish that the canonical one-billion STATICS supply is
+  below `uint128`, and that the production stake and unstake entry points preserve this bound from
+  any account state where stake does not exceed its cap-bounded balance;
 - booking and zero-accrual boost forfeiture conserve reserved plus Treasury value, while full-width
   settlement rules prove the per-purchase staker bound, aggregate settleability, five-way
   allocation conservation and escrow reclassification without double counting;
@@ -276,15 +279,18 @@ Certora verifies the following production transitions:
   weight otherwise, the forfeiter cannot share its redistribution, and the post-state remains
   conserved.
 
-The full-width `uint256` stake-lock theorem remains open. Its combined Halmos campaign did not
-finish within 2,100 seconds, and two isolated partition checks each reached a separate 600-second
-bound. A full-width Certora attempt was also excluded because its reported traces explicitly
-identified bitwise-model imprecision in the 512-bit `Math.mulDiv` path; both reported examples
-passed when replayed against compiled Solidity. Arbitrary nonzero index magnitudes and fractional
-dust in boost forfeiture also remain outside the new compositional proof. Concrete nonzero-accrual
-boost, booking and settlement fuzz controls passed 1,024 runs each. The formal models use
-deterministic exact-transfer token and PositionNFT peers; the 64-asset boundary is unrolled through
-its required exit check. Certora CLI 8.18.0 uses the pinned prover revision
+The unconstrained full-width `uint256` stake-lock theorem remains open as robustness beyond the
+deployment invariant, rather than as a reachable-state gap. The reachable-state conclusion assumes
+the immutable canonical STATICS supply of `1_000_000_000 ether` and the separately verified FIDDY
+backing and account-balance conservation properties. Its combined Halmos campaign did not finish
+within 2,100 seconds, and two isolated partition checks each reached a separate 600-second bound. A
+full-width Certora attempt was also excluded because its reported traces explicitly identified
+bitwise-model imprecision in the 512-bit `Math.mulDiv` path; both reported examples passed when
+replayed against compiled Solidity. Arbitrary nonzero index magnitudes and fractional dust in boost
+forfeiture also remain outside the new compositional proof. Concrete nonzero-accrual boost, booking
+and settlement fuzz controls passed 1,024 runs each. The formal models use deterministic
+exact-transfer token and PositionNFT peers; the 64-asset boundary is unrolled through its required
+exit check. Certora CLI 8.18.0 uses the pinned prover revision
 `f5f77783430449791186f7812ebd53addf22cabd` with Z3 4.16.0. Generated specifications, logs and
 reports remain in private evidence; this section is the versioned summary.
 
