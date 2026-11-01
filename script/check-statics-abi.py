@@ -5,7 +5,7 @@ import pathlib
 import subprocess
 
 root = pathlib.Path(__file__).resolve().parents[1]
-pin = "5027bfaa58af7309d53fca0f32ae574d87420f83"
+pin = "b59017b625de6b0dbfe5fd0b9f56248066da4497"
 assert subprocess.check_output(["git", "-C", str(root / "lib/statics"), "rev-parse", "HEAD"], text=True).strip() == pin
 
 def abi(path):

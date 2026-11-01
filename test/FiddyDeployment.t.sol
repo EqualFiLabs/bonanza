@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.30;
 
+import { IERC165 } from "openzeppelin-contracts/contracts/utils/introspection/IERC165.sol";
+import { IStaticsExternalModules } from "../src/interfaces/IStaticsExternalModules.sol";
 import { Test } from "forge-std/Test.sol";
 import { Vm } from "forge-std/Vm.sol";
 import { ERC20 } from "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
@@ -103,6 +105,27 @@ contract FiddyDeploymentTest is Test {
 
         vm.expectRevert(FiddyErrors.AlreadyInitialized.selector);
         harness.initializeAgain(deployment.diamond);
+    }
+
+    function testDeploymentRejectsOnlyThePreviousModuleInterface() public {
+        bytes4 reduced = type(IStaticsExternalModules).interfaceId;
+        bytes4 previous = reduced ^ bytes4(keccak256("transferHead()"))
+            ^ bytes4(keccak256("transferState(address,uint256)"))
+            ^ bytes4(keccak256("transferChanges(uint256,uint256)"))
+            ^ bytes4(keccak256("historyCoverage(address)"));
+        vm.mockCall(
+            address(positions),
+            abi.encodeCall(IERC165.supportsInterface, (previous)),
+            abi.encode(true)
+        );
+        vm.mockCall(
+            address(positions),
+            abi.encodeCall(IERC165.supportsInterface, (reduced)),
+            abi.encode(false)
+        );
+        bytes memory reason = abi.encodeWithSelector(FiddyErrors.InvalidBinding.selector);
+        vm.expectRevert(abi.encodeWithSelector(Errors.InitializationFailed.selector, reason));
+        harness.deploy(address(router), address(positions));
     }
 
     function testDeploymentRejectsAPositionNftWithoutTheModuleInterface() public {

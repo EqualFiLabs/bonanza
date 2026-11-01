@@ -53,7 +53,6 @@ contract StaticsForkCandidate is Test {
         vm.prank(IERC173(nft).owner());
         IStaticsGenesis(nft).bindProtocol(position);
         core = IStaticsExternalModules(position);
-        assertFalse(core.historyCoverage(nft).ready);
         IStaticsGenesisIntegration integration = IStaticsGenesisIntegration(position);
         vm.prank(IERC173(receiver).owner());
         IStaticsFeeReceiver(receiver).proposeDistributor(position);
@@ -65,7 +64,6 @@ contract StaticsForkCandidate is Test {
         vm.prank(IERC173(registry).owner());
         IGenesisActivationRegistry(registry).proposeConsumer(position);
         integration.acceptGenesisConsumerRole();
-        assertTrue(core.historyCoverage(nft).ready);
         assertEq(IGenesisActivationRegistry(registry).activeConsumer(), position);
         address owner = IERC721(nft).ownerOf(3);
         vm.prank(owner);

@@ -20,3 +20,5 @@ No chain deployment, public conversion activation, AMM construction or sibling-r
 - [x] Restrict FIDDY payouts and require a consumer Router for FIDDY Operator revenue.
 - [x] Expose the per-account nonce.
 - [x] Initialize FIDDY with the deployment Diamond cut.
+
+- [x] Use the reduced seven-selector Statics interface and qualify a matching pinned dependency.

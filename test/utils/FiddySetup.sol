@@ -16,14 +16,10 @@ import { FacetCut } from "../../src/shared/DiamondTypes.sol";
 import { LotteryIntegrationSetup } from "./LotteryIntegrationSetup.sol";
 
 contract FiddyPositions is ERC721 {
-    uint256 public transferHead;
-    bool public ready = true;
     bool public rejectAttach;
     mapping(uint256 => uint256) public legs;
     mapping(address => bool) public module;
     mapping(uint256 => mapping(address => bool)) public attached;
-    mapping(uint256 => IStaticsExternalModules.TransferChange) internal changes;
-    mapping(address => mapping(uint256 => IStaticsExternalModules.TransferState)) internal states;
     constructor() ERC721("Positions", "PNFT") { }
 
     function mint(address to, uint256 id) external {
@@ -32,10 +28,6 @@ contract FiddyPositions is ERC721 {
 
     function setModule(address who) external {
         module[who] = true;
-    }
-
-    function setReady(bool value) external {
-        ready = value;
     }
 
     function setRejectAttach(bool value) external {
@@ -64,55 +56,6 @@ contract FiddyPositions is ERC721 {
     function close(uint256 id) external {
         require(ownerOf(id) == msg.sender && legs[id] == 0);
         _burn(id);
-    }
-
-    function record(address collection, uint256 id) public {
-        // Unit fixture only: actual-source integration authenticates the registry path.
-        IStaticsExternalModules.TransferState storage state = states[collection][id];
-        ++state.nonce;
-        state.transferredAt = uint64(block.timestamp);
-        state.lastSequence = ++transferHead;
-        changes[transferHead] = IStaticsExternalModules.TransferChange(
-            collection, state.nonce, state.transferredAt, id
-        );
-    }
-
-    function transferState(address collection, uint256 id)
-        external
-        view
-        returns (IStaticsExternalModules.TransferState memory)
-    {
-        return states[collection][id];
-    }
-
-    function historyCoverage(address)
-        external
-        view
-        returns (IStaticsExternalModules.HistoryCoverage memory)
-    {
-        return IStaticsExternalModules.HistoryCoverage(0, 0, ready);
-    }
-
-    function transferChanges(uint256 afterSequence, uint256 limit)
-        external
-        view
-        returns (IStaticsExternalModules.TransferChange[] memory result, uint256 next)
-    {
-        next = afterSequence + limit;
-        if (next > transferHead) next = transferHead;
-        result = new IStaticsExternalModules.TransferChange[](next - afterSequence);
-        for (uint256 i; afterSequence < next; ++i) {
-            result[i] = changes[++afterSequence];
-        }
-    }
-
-    function _update(address to, uint256 id, address auth)
-        internal
-        override
-        returns (address from)
-    {
-        from = super._update(to, id, auth);
-        if (from != address(0) && to != address(0) && from != to) record(address(this), id);
     }
 }
 
@@ -152,7 +95,6 @@ contract FiddyOperators is ERC721 {
         from = super._update(to, id, auth);
         if (from != address(0) && to != address(0) && from != to) {
             multiplierBps[id] = 10_000;
-            core.record(address(this), id);
         }
     }
 }

@@ -3,6 +3,7 @@ pragma solidity 0.8.30;
 
 import { FiddySetup } from "./utils/FiddySetup.sol";
 import { IERC721 } from "openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
+import { IERC165 } from "openzeppelin-contracts/contracts/utils/introspection/IERC165.sol";
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import { IStaticsExternalModules } from "../src/interfaces/IStaticsExternalModules.sol";
 import { FiddyConfig } from "../src/shared/FiddyTypes.sol";
@@ -13,6 +14,7 @@ import { IFiddyActivation } from "../src/interfaces/IFiddyProtocol.sol";
 interface IStaticsCandidate {
     function create() external returns (address, address, address, address, uint256);
     function approveModule(address consumer) external;
+    function setModuleEnabled(address consumer, bool enabled) external;
 }
 
 interface IGenesisLinks {
@@ -47,6 +49,59 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         candidate.approveModule(address(diamond));
         vm.prank(authority);
         fiddy.initializeFiddy(underlying, position, ops, registry_);
+    }
+
+    function testActualCandidateSupportsOnlyReducedExternalInterface() public view {
+        bytes4 reduced = type(IStaticsExternalModules).interfaceId;
+        assertTrue(IERC165(address(core)).supportsInterface(reduced));
+        bytes4[4] memory removed = [
+            bytes4(keccak256("transferHead()")),
+            bytes4(keccak256("transferState(address,uint256)")),
+            bytes4(keccak256("transferChanges(uint256,uint256)")),
+            bytes4(keccak256("historyCoverage(address)"))
+        ];
+        bytes4 previous = reduced;
+        for (uint256 i; i < removed.length; ++i) {
+            previous ^= removed[i];
+            (bool ok,) = address(core).staticcall(abi.encodeWithSelector(removed[i]));
+            assertFalse(ok);
+        }
+        assertFalse(IERC165(address(core)).supportsInterface(previous));
+    }
+
+    function testActualCandidateAttachmentRollbackAndDisabledCleanup() public {
+        vm.prank(authority);
+        fiddy.setFiddyConversions(true, false, 100 ether);
+        candidate.setModuleEnabled(address(diamond), false);
+        uint256 beforeBalance = statics.balanceOf(alice);
+        vm.startPrank(alice);
+        statics.approve(address(diamond), 100 ether);
+        vm.expectRevert();
+        fiddy.wrapFiddy(positionId, 100 ether);
+        vm.stopPrank();
+        assertEq(statics.balanceOf(alice), beforeBalance);
+        assertEq(statics.balanceOf(address(diamond)), 0);
+        assertEq(fiddy.totalSupply(), 0);
+        assertEq(fiddyView.fiddyAccount(positionId).balance, 0);
+        assertFalse(fiddyView.fiddyAccount(positionId).attached);
+        assertEq(core.externalLegCount(positionId), 0);
+        candidate.setModuleEnabled(address(diamond), true);
+        vm.startPrank(alice);
+        fiddy.wrapFiddy(positionId, 100 ether);
+        IERC721(address(core)).approve(bob, positionId);
+        vm.stopPrank();
+        vm.prank(bob);
+        vm.expectRevert(FiddyErrors.NotPositionOwner.selector);
+        fiddy.withdrawFiddy(positionId, 1);
+        candidate.setModuleEnabled(address(diamond), false);
+        vm.startPrank(alice);
+        vm.expectRevert();
+        IPositionClosure(address(core)).closePosition(positionId);
+        fiddy.withdrawFiddy(positionId, 100 ether);
+        staking.cleanupFiddyAccount(positionId);
+        assertEq(core.externalLegCount(positionId), 0);
+        IPositionClosure(address(core)).closePosition(positionId);
+        vm.stopPrank();
     }
 
     function testActualCandidateLifecycleBoostResetAndPositionSale() public {

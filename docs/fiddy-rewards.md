@@ -205,10 +205,15 @@ dust move to Treasury. All payment assets remain independent.
 ## Integration, trust and release boundaries
 
 Pin the generic Statics candidate at
-5027bfaa58af7309d53fca0f32ae574d87420f83 for actual-source tests. The Lottery uses only the
+b59017b625de6b0dbfe5fd0b9f56248066da4497 for actual-source tests. The Lottery uses only the
 Statics external account lifecycle (`attachExternalAccountLeg`, `detachExternalAccountLeg`),
 the `supportsInterface` binding check at initialization, and `ownerOf`. It does not read the
-Statics NFT transfer history, and it adds no product callbacks.
+Statics NFT transfer history, and it adds no product callbacks. The shared interface has seven
+lifecycle/discovery selectors and ERC-165 ID `0x2795ac62`; the former eleven-selector ID
+`0x6a782754` is not accepted for new bindings. Matching interface deployment and Statics module
+approval are prerequisites for new accounts. Existing FIDDY financial storage, revenue indexes,
+boost rules and account nonces require no migration from this ABI change. This dependency pin
+is a local integration candidate, not evidence of a production upgrade.
 
 Trust assumptions:
 

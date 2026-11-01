@@ -36,8 +36,12 @@ contract StaticsCandidate is GenesisPositionIntegrationTest {
         return (address(diamond), address(genesis), address(activationRegistry), address(stakingAsset), id);
     }
 
-    function approveModule(address consumer) external {
+    function setModuleEnabled(address consumer, bool enabled) public {
         IStaticsExternalModules(address(diamond))
-            .setExternalModule(consumer, keccak256("statics.lottery.fiddy.account.v1"), true);
+            .setExternalModule(consumer, keccak256("statics.lottery.fiddy.account.v1"), enabled);
+    }
+
+    function approveModule(address consumer) external {
+        setModuleEnabled(consumer, true);
     }
 }
