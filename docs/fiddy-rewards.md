@@ -232,7 +232,19 @@ public wraps, not total wrapped supply. Every unit stays fully backed either way
 
 Actual-candidate local integration and block-pinned fork evidence are separate from
 deployment. This extension authorizes no live transactions or conversion activation.
-Historical formal reports do not prove the new system.
+
+A candidate-local formal campaign supplements the historical reports. Against the production
+FIDDY implementations, it proves that supply equals allocated backing across the modeled token
+transitions, reserve funding changes supply, backing and inventory together, participation moves
+existing inventory into account custody, and booking a full staker share conserves reserved plus
+Treasury value. It also proves zero-accrual boost forfeiture clears registration and restores base
+weight. Full-width settlement rules prove the per-purchase staker bound, aggregate settleability,
+five-way allocation conservation, and escrow reclassification without double counting.
+
+The stronger nonzero-accrual boost-forfeiture theorem and the FIDDY Halmos partitions did not
+finish within their execution bounds and are not counted as proof. Concrete nonzero-accrual boost,
+booking and settlement fuzz controls passed 1,024 runs each. Generated specifications, logs and
+reports remain in private local evidence; this paragraph is the versioned summary.
 
 ## Client and deployment preparation
 
