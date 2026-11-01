@@ -1,5 +1,9 @@
 # Statics Lottery formal targets
 
+> Historical verification scope: these models describe earlier candidates. The current
+> optional-recipient ABI and allocations have no formal proof result. Obsolete Halmos
+> harnesses and their concrete sanity controls are retained privately, outside this build.
+
 This package defines symbolic properties over the production Lottery facets and inductive
 accounting properties. Formal execution is restricted to the dedicated verification system
 described in the private operator tooling. Do not install, probe, or invoke Halmos

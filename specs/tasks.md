@@ -9,7 +9,7 @@
 7. Restrict FIDDY withdrawals to the PositionNFT owner and FIDDY payouts to the caller, Treasury or the dedicated snapshotted Round Recipient, and require a consumer Router for FIDDY-priced Operator revenue.
 8. Expose a per-account nonce for PositionNFT market buyer protection.
 9. Initialize FIDDY in the same transaction as the deployment Diamond cut.
-10. Qualify real shared integration, storage upgrades, adversarial assets and economic conservation; commit the candidate, review locally, remediate and update the feature PR with terminal CI evidence.
+10. Qualify real shared integration, fresh deployment initialization, adversarial assets and economic conservation; commit the candidate, review locally, remediate and update the feature PR with terminal CI evidence.
 
 No chain deployment, public conversion activation, AMM construction or sibling-repository modification is included. Existing historical proof results do not cover this extension.
 
@@ -28,4 +28,4 @@ No chain deployment, public conversion activation, AMM construction or sibling-r
 - [x] Validate recipient addresses and combined Operator/staker/recipient budgets; allocate and reserve actual receipts with Treasury-funded capped tips (27.2, 27.3, 27.5).
 - [x] Add permissionless fixed-recipient delivery with exact-token checks, pause-safe retry, FIDDY isolation, events and surplus protection (27.6, 27.7, 27.8).
 - [x] Retire obsolete ABI upgrade fixtures and preserve historical formal material privately; add current-ABI lifecycle, hostile-token, fuzz and stateful conservation coverage (27.3-27.9).
-- [ ] Complete focused checks, local review/remediation and terminal PR CI. Existing formal evidence does not establish recipient behavior.
+- [x] Complete focused checks and local review/remediation; require terminal PR CI before handoff. Existing formal evidence does not establish recipient behavior.

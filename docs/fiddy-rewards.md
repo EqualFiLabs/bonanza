@@ -19,13 +19,13 @@ authority. Consumer approval does not confer mint, redemption or reserve authori
 Revocation affects future ordinary transfers; consumers are trusted integration contracts
 and must not trap their users' holdings. No AMM is installed by this extension.
 
-Every protocol payout of FIDDY as a Payment Token or revenue asset goes to the caller or to
-the governance Treasury recipient. This covers winner claims, finalizer-tip claims, staker
-revenue claims and Treasury delivery. Other Payment Tokens keep their arbitrary receiver
+Winner, finalizer-tip and staker revenue claims in FIDDY go to the caller or the governance
+Treasury recipient. Treasury delivery goes to its configured recipient. The dedicated Round
+Recipient payout goes only to that Round's snapshotted recipient. Other Payment Tokens keep their arbitrary receiver
 semantics. Unwrapping pays STATICS and keeps its receiver parameter.
 
-Selling the PositionNFT is the only sanctioned route for FIDDY to change hands outside
-approved consumers. Account balance, stake, stake lock, registration and accrued revenue all
+PositionNFT sales transfer FIDDY account ownership. The dedicated Round Recipient payout
+also permits the configured revenue allocation without an approved consumer. Account balance, stake, stake lock, registration and accrued revenue all
 follow the PositionNFT.
 
 Wrap and unwrap launch independently disabled, with zero public wrap cap. When
@@ -37,9 +37,10 @@ the cap. No arbitrary inventory/backing withdrawal or unbacked mint exists.
 
 ## Configuration and participation
 
-Reward settings are additional immutable per-version state and separately
-snapshotted per round. Existing embedded configurations, round fields, enums and
-reserved historical slots keep their layout. Missing settings mean no rewards.
+Reward settings are immutable per-version state and separately snapshotted per round.
+Configurations created without reward settings have no rewards. The optional Recipient
+is embedded directly in the current configuration and Round snapshot types; this release
+uses a fresh deployment ABI and storage layout.
 New reward configurations require explicit rates/splits and start disabled.
 The 50% winner baseline remains; no illustrative staker split is a launch choice.
 
@@ -78,15 +79,16 @@ reserved and added to the asset's revenue index; division dust follows the dust 
 When total weight is zero, the share goes to Treasury and emits `FiddyZeroWeightRevenue`.
 Otherwise `FiddyRevenueBooked` reports the round, asset, amount, total weight and new index.
 
-Settlement computes the winner, Operator and finalizer amounts from aggregate receipts:
+Settlement computes the winner, Operator, Recipient and finalizer amounts from aggregate receipts:
 
 ```text
 winner    = floor(receipts * winnerBps / 10000)
 protocol  = receipts - winner
 operator  = floor(protocol * operatorProtocolBps / 10000)
 staker    = sum of booked purchase shares for the round
-finalizer = min(finalizerTip, protocol - operator - staker)
-treasury  = protocol - operator - staker - finalizer
+recipient = floor(receipts * recipientBps / 10000)
+finalizer = min(finalizerTip, protocol - operator - staker - recipient)
+treasury  = protocol - operator - staker - recipient - finalizer
 ```
 
 Escrow is released by `receipts - staker`. Settlement emits `StakerRevenueSettled` with the
@@ -94,7 +96,9 @@ round's booked staker total. It neither reads nor calls Statics, and it does not
 FIDDY staking state. The sum of per-purchase floors never exceeds the floor of the aggregate,
 and `protocol - operator >= receipts * (10000 - winnerBps) * stakerProtocolBps / 10000^2`
 whenever the Operator and staker BPS sum to at most 10000. The staker total is therefore
-always covered.
+always covered. The additional combined bound
+`recipientBps * 10000 <= (10000 - winnerBps) * (10000 - operatorProtocolBps - stakerProtocolBps)`
+also reserves the gross-based Recipient share.
 
 Because revenue accrues at purchase, a stake added just before settlement earns nothing from
 earlier purchases.
@@ -237,17 +241,16 @@ Historical formal reports do not prove the new system.
 ## Client and deployment preparation
 
 Install token, staking and view selector groups together with the updated purchase,
-governance, settlement and surplus facets. Existing round and configuration layouts are
-unchanged; reward extensions use a separate namespace and default to zero for existing rounds.
+governance, settlement and surplus facets. Use the current configuration, Round and accounting
+types directly for a fresh deployment. Reward settings use their existing separate namespace;
+recipient fields are embedded in the existing Lottery types.
 
 The deployment script initializes FIDDY in the same transaction as the Diamond cut through
 `LotteryInit.initializeWithFiddy`, binding STATICS, the PositionNFT, the Operator collection
 and the activation registry. It reads the PositionNFT address from
 `LOTTERY_FIDDY_POSITION_NFT`; initialization verifies its code and module interface and reverts
 the whole cut otherwise. A freshly deployed Diamond therefore reports STATICS's decimals
-immediately. Upgrades that add FIDDY to an existing Diamond use the one-time
-`initializeFiddy(STATICS, PositionNFT, Operators, activationRegistry)`. Initialization enables
-no reward configuration. Both conversions, wrap capacity, boosts and external consumer
+immediately. Initialization enables no reward configuration. Both conversions, wrap capacity, boosts and external consumer
 approval launch at zero/false. Statics governance must separately approve the Diamond as an
 external account module before the first account attaches.
 
