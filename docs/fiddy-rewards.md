@@ -205,7 +205,7 @@ dust move to Treasury. All payment assets remain independent.
 ## Integration, trust and release boundaries
 
 Pin the generic Statics candidate at
-b59017b625de6b0dbfe5fd0b9f56248066da4497 for actual-source tests. The Lottery uses only the
+a43eb11c10afc0d9107c7881210dc4bf87cf6e3e for actual-source tests. The Lottery uses only the
 Statics external account lifecycle (`attachExternalAccountLeg`, `detachExternalAccountLeg`),
 the `supportsInterface` binding check at initialization, and `ownerOf`. It does not read the
 Statics NFT transfer history, and it adds no product callbacks. The shared interface has seven
