@@ -268,13 +268,23 @@ Certora verifies the following production transitions:
   shortening and immediate relocking for nonzero top-ups when prior stake is at most `uint128`;
 - booking and zero-accrual boost forfeiture conserve reserved plus Treasury value, while full-width
   settlement rules prove the per-purchase staker bound, aggregate settleability, five-way
-  allocation conservation and escrow reclassification without double counting.
+  allocation conservation and escrow reclassification without double counting;
+- six nonvacuous compositional rules cover nonzero boost forfeiture for one listed asset with
+  `uint32` primary stake, other stake and excess weight, where excess is at most 25% of base and the
+  index delta is exactly one RAY. They prove the seeded ledger is conserved, the forfeiter retains
+  base accrual, excess routes to Treasury when no other weight exists or redistributes only to other
+  weight otherwise, the forfeiter cannot share its redistribution, and the post-state remains
+  conserved.
 
-The full-width `uint256` Halmos relock partition did not finish within its 2,100-second bound and
-is not counted here. The stronger nonzero-accrual boost-forfeiture theorem also remains open.
-Concrete nonzero-accrual boost, booking and settlement fuzz controls passed 1,024 runs each. The
-formal models use deterministic exact-transfer token and PositionNFT peers; the 64-asset boundary
-is unrolled through its required exit check. Certora CLI 8.18.0 uses the pinned prover revision
+The full-width `uint256` stake-lock theorem remains open. Its combined Halmos campaign did not
+finish within 2,100 seconds, and two isolated partition checks each reached a separate 600-second
+bound. A full-width Certora attempt was also excluded because its reported traces explicitly
+identified bitwise-model imprecision in the 512-bit `Math.mulDiv` path; both reported examples
+passed when replayed against compiled Solidity. Arbitrary nonzero index magnitudes and fractional
+dust in boost forfeiture also remain outside the new compositional proof. Concrete nonzero-accrual
+boost, booking and settlement fuzz controls passed 1,024 runs each. The formal models use
+deterministic exact-transfer token and PositionNFT peers; the 64-asset boundary is unrolled through
+its required exit check. Certora CLI 8.18.0 uses the pinned prover revision
 `f5f77783430449791186f7812ebd53addf22cabd` with Z3 4.16.0. Generated specifications, logs and
 reports remain in private evidence; this section is the versioned summary.
 
