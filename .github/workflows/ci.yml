@@ -34,9 +34,6 @@ jobs:
           forge fmt --check
           forge fmt --root integration --check
 
-      - name: Build pre-FIDDY upgrade baseline
-        run: bash script/build-legacy-baseline.sh
-
       - name: Build pinned Statics candidate independently
         run: forge build --config-path integration/foundry.toml
 

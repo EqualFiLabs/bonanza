@@ -243,6 +243,12 @@ contract LotteryStateHandler is Test {
         try claims.claimWinner(roundId, current.winner) { } catch { }
     }
 
+    function flushRecipient(uint256 rawRound) external {
+        uint256 roundId = _selectRound(rawRound);
+        if (roundId == 0 || lotteryView.round(roundId).recipientClaimable == 0) return;
+        revenue.flushRecipientRevenue(roundId);
+    }
+
     function claimFinalizer(uint256 rawAsset) external {
         address asset = _asset(rawAsset);
         if (lotteryView.finalizerCredit(asset, address(this)) == 0) return;
@@ -340,11 +346,23 @@ contract LotteryInvariantTest is StdInvariant, LotteryIntegrationSetup {
 
     function setUp() public override {
         super.setUp();
+        LotteryConfig memory first = _config(address(tokenA), 10, 10, 5, 1 days, 30);
+        first.recipientBps = 1000;
+        first.recipient = makeAddr("first recipient");
+        LotteryConfig memory second = _config(address(tokenB), 7, 6, 0, 2 days, 0);
+        second.recipientBps = 500;
+        second.recipient = makeAddr("second recipient");
+        vm.startPrank(authority);
+        uint64 version = governance.createLotteryConfig(first);
+        governance.createLotteryConfig(second);
+        governance.setLotteryConfigEnabled(version, true);
+        governance.setLotteryConfigEnabled(version + 1, true);
+        vm.stopPrank();
         handler = new LotteryStateHandler(
-            address(diamond), authority, alice, bob, registry, router, tokenA, tokenB, 1
+            address(diamond), authority, alice, bob, registry, router, tokenA, tokenB, version
         );
 
-        bytes4[] memory selectors = new bytes4[](12);
+        bytes4[] memory selectors = new bytes4[](13);
         selectors[0] = LotteryStateHandler.openRound.selector;
         selectors[1] = LotteryStateHandler.buyTickets.selector;
         selectors[2] = LotteryStateHandler.advanceTime.selector;
@@ -357,6 +375,7 @@ contract LotteryInvariantTest is StdInvariant, LotteryIntegrationSetup {
         selectors[9] = LotteryStateHandler.setConfigEnabled.selector;
         selectors[10] = LotteryStateHandler.updateIntegration.selector;
         selectors[11] = LotteryStateHandler.setMaxActiveRounds.selector;
+        selectors[12] = LotteryStateHandler.flushRecipient.selector;
         targetContract(address(handler));
         targetSelector(FuzzSelector({ addr: address(handler), selectors: selectors }));
     }
@@ -404,7 +423,8 @@ contract LotteryInvariantTest is StdInvariant, LotteryIntegrationSetup {
         AssetAccounting memory accounting = stateView.assetAccounting(asset);
         uint256 accounted = accounting.activeRoundEscrow + accounting.winnerLiability
             + accounting.refundLiability + accounting.finalizerLiability
-            + accounting.pendingOperatorRevenueTotal + accounting.treasuryAvailable;
+            + accounting.pendingOperatorRevenueTotal + accounting.treasuryAvailable
+            + accounting.recipientLiability;
         uint256 balance = IntegrationToken(asset).balanceOf(address(diamond));
         assertGe(balance, accounted);
         assertEq(balance, accounted);
@@ -413,6 +433,7 @@ contract LotteryInvariantTest is StdInvariant, LotteryIntegrationSetup {
     function _assertLedgerAggregates(address asset) private view {
         uint256 activeEscrow;
         uint256 winnerLiability;
+        uint256 recipientLiability;
         uint256 count = handler.roundCount();
         for (uint256 i; i < count; ++i) {
             uint256 roundId = handler.roundIdAt(i);
@@ -422,12 +443,14 @@ contract LotteryInvariantTest is StdInvariant, LotteryIntegrationSetup {
                 activeEscrow += current.receipts;
             } else if (current.status == RoundStatus.Settled) {
                 winnerLiability += current.winnerClaimable;
+                recipientLiability += current.recipientClaimable;
             }
         }
 
         AssetAccounting memory accounting = stateView.assetAccounting(asset);
         assertEq(accounting.activeRoundEscrow, activeEscrow);
         assertEq(accounting.winnerLiability, winnerLiability);
+        assertEq(accounting.recipientLiability, recipientLiability);
         assertEq(accounting.refundLiability, 0);
         assertEq(accounting.finalizerLiability, stateView.finalizerCredit(asset, address(handler)));
 
@@ -468,12 +491,16 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
         LotteryConfig memory configA = _config(address(tokenA), 10, 10, 10, 1 days, 30);
         configA.winnerBps = 5000;
         configA.operatorProtocolBps = 4000;
+        configA.recipientBps = 1000;
+        configA.recipient = makeAddr("reward recipient A");
         LotteryConfig memory configB = _config(address(tokenB), 7, 13, 5, 2 days, 0);
         configB.winnerBps = 7000;
         configB.operatorProtocolBps = 2500;
+        configB.recipientBps = 750;
+        configB.recipient = makeAddr("reward recipient B");
         vm.startPrank(authority);
-        uint64 first = governance.createRewardLotteryConfig(configA, FiddyConfig(0, 6000, false));
-        governance.createRewardLotteryConfig(configB, FiddyConfig(0, 7500, false));
+        uint64 first = governance.createRewardLotteryConfig(configA, FiddyConfig(0, 4000, false));
+        governance.createRewardLotteryConfig(configB, FiddyConfig(0, 5000, false));
         governance.setLotteryConfigEnabled(first, true);
         governance.setLotteryConfigEnabled(first + 1, true);
         vm.stopPrank();
@@ -485,7 +512,7 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
             address(diamond), authority, alice, bob, registry, router, tokenA, tokenB, first
         );
 
-        bytes4[] memory selectors = new bytes4[](11);
+        bytes4[] memory selectors = new bytes4[](12);
         selectors[0] = LotteryStateHandler.openRound.selector;
         selectors[1] = LotteryStateHandler.buyTickets.selector;
         selectors[2] = LotteryStateHandler.advanceTime.selector;
@@ -497,6 +524,7 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
         selectors[8] = LotteryStateHandler.setPaused.selector;
         selectors[9] = LotteryStateHandler.setConfigEnabled.selector;
         selectors[10] = LotteryStateHandler.setMaxActiveRounds.selector;
+        selectors[11] = LotteryStateHandler.flushRecipient.selector;
         targetContract(address(handler));
         targetSelector(FuzzSelector({ addr: address(handler), selectors: selectors }));
     }
@@ -512,12 +540,13 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
         FiddyAsset memory book = fiddyView.fiddyAsset(asset);
         uint256 accounted = accounting.activeRoundEscrow + accounting.winnerLiability
             + accounting.finalizerLiability + accounting.pendingOperatorRevenueTotal
-            + accounting.treasuryAvailable + book.reserved + backing;
+            + accounting.treasuryAvailable + accounting.recipientLiability + book.reserved + backing;
         assertEq(IntegrationToken(asset).balanceOf(address(diamond)), accounted);
         assertEq(revenue.availableTokenSurplus(asset), 0);
 
         uint256 escrow;
         uint256 winnerLiability;
+        uint256 recipientLiability;
         uint256 booked;
         uint256 count = handler.roundCount();
         for (uint256 i; i < count; ++i) {
@@ -530,10 +559,12 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
                 escrow += current.receipts - staker;
             } else if (current.status == RoundStatus.Settled) {
                 winnerLiability += current.winnerClaimable;
+                recipientLiability += current.recipientClaimable;
             }
         }
         assertEq(accounting.activeRoundEscrow, escrow);
         assertEq(accounting.winnerLiability, winnerLiability);
+        assertEq(accounting.recipientLiability, recipientLiability);
         // Stakers never claim in this handler, so booked revenue is reserved less whole dust.
         assertLe(book.reserved, booked);
         assertLe(booked - book.reserved, accounting.treasuryAvailable);

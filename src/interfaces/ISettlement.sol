@@ -11,6 +11,7 @@ interface ISettlement {
         bytes32 applicationSeed,
         uint256 winnerAmount,
         uint256 operatorAmount,
+        uint256 recipientAmount,
         uint256 treasuryAmount,
         uint256 finalizerTip
     );

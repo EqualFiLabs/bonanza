@@ -10,7 +10,7 @@ import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
 import { LibOperatorFeeRouter } from "../libraries/LibOperatorFeeRouter.sol";
 import { LibReentrancy } from "../libraries/LibReentrancy.sol";
 import { Errors } from "../shared/Errors.sol";
-import { AssetAccounting, IntegrationConfig } from "../shared/Types.sol";
+import { AssetAccounting, IntegrationConfig, Round, RoundStatus } from "../shared/Types.sol";
 
 contract RevenueFacet is IRevenue {
     modifier nonReentrant() {
@@ -47,6 +47,28 @@ contract RevenueFacet is IRevenue {
         return amount;
     }
 
+    /// @notice Anyone may deliver the full settled allocation to its snapshotted recipient.
+    function flushRecipientRevenue(uint256 roundId)
+        external
+        nonReentrant
+        returns (uint256 flushed)
+    {
+        Round storage round = LibLotteryStorage.gameStorage().rounds[roundId];
+        if (round.status == RoundStatus.None) revert Errors.RoundNotFound(roundId);
+        if (round.status != RoundStatus.Settled) revert Errors.RoundNotSettled(roundId);
+        uint256 amount = round.recipientClaimable;
+        if (amount == 0) revert Errors.NoRecipientRevenue();
+        round.recipientClaimable = 0;
+        LibLotteryStorage.accountingStorage()
+                .assetAccounting[round.config.paymentToken]
+                .recipientLiability -= amount;
+        LibExactToken.pushRoundRecipientExact(round, amount);
+        emit RecipientRevenueFlushed(
+            roundId, round.config.paymentToken, round.config.recipient, amount
+        );
+        return amount;
+    }
+
     function flushTreasury(address asset, uint256 amount)
         external
         nonReentrant
@@ -80,7 +102,7 @@ contract RevenueFacet is IRevenue {
         uint256 accounted = accounting.activeRoundEscrow + accounting.winnerLiability
             + accounting.refundLiability + accounting.finalizerLiability
             + accounting.pendingOperatorRevenueTotal + accounting.treasuryAvailable
-            + LibFiddy.extraReserved(asset);
+            + accounting.recipientLiability + LibFiddy.extraReserved(asset);
         uint256 balance = IERC20(asset).balanceOf(address(this));
         return balance > accounted ? balance - accounted : 0;
     }

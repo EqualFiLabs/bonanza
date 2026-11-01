@@ -259,7 +259,6 @@ stake. The unlock time is `stakeStart + 24 hours`. Claims remain available durin
 Run the independent pinned Statics build before FIDDY tests, then the ABI parity check:
 
 ```sh
-bash script/build-legacy-baseline.sh
 forge build --config-path integration/foundry.toml
 forge build
 python3 script/check-statics-abi.py
@@ -276,3 +275,7 @@ Fork qualification uses Robinhood L2 block 101439372, hash
 returns L1 block 26303058. The test performs only local fork impersonation and candidate
 creation; it does not broadcast. Runtime code hashes are checked against the pinned deployment
 manifest before the registry handoff.
+
+The optional round recipient is a fixed protocol payout destination for FIDDY-priced rounds.
+It does not relax ordinary FIDDY transfers or receiver restrictions on other claim paths.
+Recipient, Operator and configured staker allocations must fit the non-winner budget.

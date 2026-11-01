@@ -215,6 +215,8 @@ contract DeployLottery is Script {
             maxTicketsPerPurchase: TICKET_COUNT,
             winnerBps: WINNER_BPS,
             operatorProtocolBps: OPERATOR_PROTOCOL_BPS,
+            recipientBps: 0,
+            recipient: address(0),
             finalizerTip: finalizerTip
         });
     }
@@ -273,12 +275,13 @@ contract DeployLottery is Script {
     }
 
     function _revenueSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](5);
+        selectors = new bytes4[](6);
         selectors[0] = IRevenue.flushOperatorRevenue.selector;
         selectors[1] = IRevenue.flushTreasury.selector;
         selectors[2] = IRevenue.availableTokenSurplus.selector;
         selectors[3] = IRevenue.absorbTokenSurplus.selector;
         selectors[4] = IRevenue.flushNativeSurplus.selector;
+        selectors[5] = IRevenue.flushRecipientRevenue.selector;
     }
 
     function _viewSelectors() internal pure returns (bytes4[] memory selectors) {

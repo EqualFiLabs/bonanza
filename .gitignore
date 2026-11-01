@@ -18,5 +18,5 @@ __pycache__/
 out-statics/
 cache-statics/
 
-/.legacy-build/
-/out-legacy/
+/test/formal/
+/x-ray/
