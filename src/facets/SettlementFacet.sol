@@ -23,6 +23,7 @@ contract SettlementFacet is ISettlement {
         uint256 treasury;
         uint256 finalizer;
         uint256 staker;
+        uint256 recipient;
     }
 
     modifier nonReentrant() {
@@ -62,6 +63,7 @@ contract SettlementFacet is ISettlement {
             applicationSeed,
             amounts.winner,
             amounts.operator,
+            amounts.recipient,
             amounts.treasury,
             amounts.finalizer
         );
@@ -107,6 +109,7 @@ contract SettlementFacet is ISettlement {
             round.receipts.toUint128(),
             round.config.winnerBps,
             round.config.operatorProtocolBps,
+            round.config.recipientBps,
             LibFiddyStorage.state().stakerAccrued[roundId],
             round.config.finalizerTip
         );
@@ -116,6 +119,7 @@ contract SettlementFacet is ISettlement {
         uint128 gross,
         uint16 winnerBps,
         uint16 operatorProtocolBps,
+        uint16 recipientBps,
         uint256 stakerAccrued,
         uint96 finalizerTip
     ) internal pure returns (SettlementAmounts memory amounts) {
@@ -128,10 +132,12 @@ contract SettlementFacet is ISettlement {
             protocolAmount = uint256(gross) - amounts.winner;
             amounts.operator = protocolAmount * operatorProtocolBps / BPS_DENOMINATOR;
         }
-        // Purchase-time staker floors sum to at most protocolAmount - operator whenever Operator
-        // and staker BPS sum to at most the denominator. Checked arithmetic fails closed.
+        // Configuration validation budgets recipient and staker shares together. Purchase-time
+        // staker floors cannot exceed their aggregate bound; checked subtraction fails closed.
         amounts.staker = stakerAccrued;
-        uint256 treasuryGross = protocolAmount - amounts.operator - stakerAccrued;
+        amounts.recipient = uint256(gross) * recipientBps / BPS_DENOMINATOR;
+        uint256 treasuryGross =
+            protocolAmount - amounts.operator - stakerAccrued - amounts.recipient;
         amounts.finalizer = finalizerTip < treasuryGross ? finalizerTip : treasuryGross;
         amounts.treasury = treasuryGross - amounts.finalizer;
     }
@@ -150,6 +156,7 @@ contract SettlementFacet is ISettlement {
         round.winner = winner;
         round.applicationSeed = applicationSeed;
         round.winnerClaimable = amounts.winner;
+        round.recipientClaimable = amounts.recipient;
         gs.activeRoundForConfig[round.configVersion] = 0;
         --gs.activeRoundCount;
 
@@ -159,6 +166,7 @@ contract SettlementFacet is ISettlement {
         AssetAccounting storage accounting = accountingStorage.assetAccounting[paymentToken];
         accounting.activeRoundEscrow -= round.receipts - amounts.staker;
         accounting.winnerLiability += amounts.winner;
+        accounting.recipientLiability += amounts.recipient;
         accountingStorage.pendingOperatorRevenue[
             round.integrationVersion
         ][paymentToken] += amounts.operator;

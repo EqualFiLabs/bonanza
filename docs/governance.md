@@ -40,7 +40,8 @@ redirect custody. A timelock makes a proposed change observable; it does not mak
 - randomness delay;
 - maximum tickets per purchase;
 - winner BPS;
-- Operator share of the remaining Protocol Share; and
+- Operator share of the remaining Protocol Share;
+- optional recipient address and gross-revenue BPS; and
 - finalizer tip.
 
 Creation also admits the Payment Token address for canonical-token surplus accounting. The version

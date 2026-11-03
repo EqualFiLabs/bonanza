@@ -26,7 +26,7 @@ contract StakerAllocationHarness is SettlementFacet {
         uint256 staker,
         uint96 finalizerTip
     ) external pure returns (SettlementAmounts memory) {
-        return _allocateValues(gross, winnerBps, operatorBps, staker, finalizerTip);
+        return _allocateValues(gross, winnerBps, operatorBps, 0, staker, finalizerTip);
     }
 }
 

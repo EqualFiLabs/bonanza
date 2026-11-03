@@ -1,5 +1,9 @@
 # Statics Lottery formal targets
 
+> Historical verification scope: these models describe earlier candidates. The current
+> optional-recipient ABI and allocations have no formal proof result. Obsolete Halmos
+> harnesses and their concrete sanity controls are retained privately, outside this build.
+
 This package defines symbolic properties over the production Lottery facets and inductive
 accounting properties. Formal execution is restricted to the dedicated verification system
 described in the private operator tooling. Do not install, probe, or invoke Halmos
@@ -36,7 +40,7 @@ bounded-loop warning. A compiled harness is not a proof result. Branch-feasibili
 
 The deadline commitment property calls the shared production scheduling helper for positive `uint32` durations and all `uint32` delays, using the deterministic Registry schedule summary. The purchase property funds and approves an exact-transfer token, executes a successful production `buyTickets` call immediately before a fixed deadline, then requires the exact `RoundExpired` error at/after it with unchanged ticket, receipt, and token balances. Its seeded initial sold/receipt history is synthetic; it proves the purchase guard, not whole-round solvency. The settlement properties call production `settleRound`, including its readiness gate, seed derivation, sold-ticket lookup, allocation, and accounting. A single cumulative ownership range contains every positive sold quantity below `uint32.max` (constrained directly with `vm.assume`, without a modulo-based input remap); the configured cap is one larger. The Registry summary supplies one canonical cached beacon after the cutoff. Token custody is abstracted for this accounting-only path. These harnesses seed reachable preconditions rather than proving the opening/purchase history; Diamond integration tests cover that history.
 
-Harness seed/read helpers accept mapping keys as runtime parameters so the prover uses the same runtime Keccak storage representation as the production paths; hard-coded precomputed mapping hashes are not interchangeable in Halmos 0.3.3. Concrete controls in `test/LotteryFormalSanity.t.sol` also execute the purchase and settlement properties in Foundry.
+Harness seed/read helpers accept mapping keys as runtime parameters so the prover uses the same runtime Keccak storage representation as the production paths; hard-coded precomputed mapping hashes are not interchangeable in Halmos 0.3.3.
 
 The removed refund-claim rule belongs to the retired API; historical reports retain that result for the original release. Current rounds have no refund transition, checked by deadline settlement assertions and stateful invariants. All remaining original properties must still pass. The original evidence files bind their original source; new candidate evidence is separate.
 

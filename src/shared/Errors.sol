@@ -26,8 +26,10 @@ library Errors {
     error NoCode(address target);
     error NoFinalizerCredit();
     error NoWinnerClaim();
+    error NoRecipientRevenue();
     error NotAuthority(address caller);
     error NotGuardian(address caller);
+    error NotRecipient(address caller);
     error NotWinner(address caller);
     error ProtocolPaused();
     error PurchaseEntryNotFound(uint256 roundId, uint256 index);

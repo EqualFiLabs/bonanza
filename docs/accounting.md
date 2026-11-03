@@ -30,7 +30,8 @@ For each admitted token address `asset`, the Diamond stores:
 |---|---|
 | `activeRoundEscrow` | Ticket receipts still backing open or sold-out Rounds |
 | `winnerLiability` | Settled proceeds not yet claimed by winners |
-| `refundLiability` | Reserved legacy slot; zero for fresh deadline-draw deployments |
+| `recipientLiability` | Settled round allocations not yet delivered to their fixed recipients |
+| `refundLiability` | Unused field kept in the ledger; always zero for deadline-draw rounds |
 | `finalizerLiability` | Recorded settlement tips not yet claimed |
 | `pendingOperatorRevenueTotal` | Operator proceeds not yet accepted by a Router |
 | `treasuryAvailable` | Treasury proceeds or absorbed surplus not yet delivered |
@@ -41,6 +42,7 @@ The recorded amount for one token is:
 accounted(asset) =
     activeRoundEscrow
   + winnerLiability
+  + recipientLiability
   + refundLiability
   + finalizerLiability
   + pendingOperatorRevenueTotal
@@ -114,7 +116,8 @@ winner       = floor(gross * winnerBps / D)
 protocol     = gross - winner
 operator     = floor(protocol * operatorProtocolBps / D)
 staker       = stakerAccrued[round]   // sum of per-purchase shares; 0 without FIDDY rewards
-treasuryGross = protocol - operator - staker
+recipient    = floor(gross * recipientBps / D)
+treasuryGross = protocol - operator - staker - recipient
 finalizer    = min(finalizerTip, treasuryGross)
 treasury     = treasuryGross - finalizer
 ```
@@ -122,7 +125,7 @@ treasury     = treasuryGross - finalizer
 The final subtraction gives all division remainder to Treasury. The exact conservation identity is:
 
 ```text
-winner + operator + staker + treasury + finalizer == gross
+winner + operator + recipient + staker + treasury + finalizer == gross
 ```
 
 Settlement performs only storage reclassification:
@@ -130,6 +133,8 @@ Settlement performs only storage reclassification:
 ```text
 activeRoundEscrow                              -= gross - staker
 winnerLiability                               += winner
+recipientLiability                            += recipient
+round.recipientClaimable                      = recipient
 pendingOperatorRevenue[integration][token]    += operator
 pendingOperatorRevenueTotal                   += operator
 treasuryAvailable                             += treasury
@@ -265,12 +270,15 @@ reserved * RAY == sum(claimable * RAY + remainderRay + weight * (indexRay - paid
 
 Winner = floor(receipts * winnerBps / 10000). The Operator amount is a floored fraction of the
 protocol remainder. The staker amount is the sum of per-purchase floors, which never exceeds the
-protocol remainder less the Operator amount. Treasury receives the rest less the capped finalizer
-tip. The Operator and staker percentages sum to at most 10000. Old rounds have zero staker share.
+protocol remainder less the Operator amount. The Recipient receives a floored fraction of gross
+receipts. Treasury receives the rest after Recipient revenue and the capped finalizer tip.
+The combined configuration bound reserves room for all three allocations. Configurations without
+FIDDY rewards have zero staker share.
 
 For a FIDDY payment round, ticket escrow and all claims move existing supply; reward inventory,
 account custody and reserved FIDDY revenue are counted alongside ordinary Lottery liabilities.
-FIDDY payouts go only to the caller or the Treasury recipient. STATICS liabilities count
+FIDDY payouts go only to the caller, the Treasury recipient, or the snapshotted Round Recipient
+through its dedicated payout path. STATICS liabilities count
 allocated backing once, without adding inventory again. Exact Router funding uses a single-use
 protocol movement and clears its allowance, and requires the Router to be an approved FIDDY
 consumer so it can pay Operators. Approved consumer status never permits raw transfers into
@@ -278,3 +286,31 @@ protocol custody or redemption.
 
 Historical formal reports do not cover FIDDY. Current evidence consists of focused tests, stateful
 conservation, actual-candidate integration, and separately reported fork qualification.
+
+
+## Optional fixed recipient
+
+Each configuration directly specifies `recipientBps` (of gross receipts) and `recipient`.
+Zero BPS disables the allocation; positive BPS requires a nonzero address other than the Diamond.
+The round snapshots both settings, so governance cannot redirect its allocation. Defaults remain
+disabled. For a 50% Winner / 2.5% Operators / 45% recipient split, use 5000 winner BPS,
+500 Operator protocol BPS and 4500 recipient BPS, with zero staker BPS. Treasury receives the
+remaining 2.5% before the finalizer tip. Integer division may add dust to Treasury.
+
+Config creation validates the recipient budget alongside the full configured staker share:
+`recipientBps * 10000 <= (10000 - winnerBps) * (10000 - operatorProtocolBps - stakerProtocolBps)`.
+The Operator and staker protocol BPS must also sum to at most 10000. Existing zero-weight staker
+routing to Treasury and purchase-time booking remain unchanged.
+
+Anyone may call `flushRecipientRevenue(roundId)` to send the entire unpaid allocation to that
+round's fixed address. It uses the original Payment Token, remains available during pause, and
+cannot redirect or double-pay a claim. The recipient itself may instead call
+`claimRecipientRevenue(roundId, receiver)` to take the same full allocation to a receiver it
+chooses, also while paused. This recovers an allocation the fixed address can no longer receive,
+such as after an issuer freeze. No other account, including governance, can pick the receiver.
+Exact-transfer failures revert atomically. Winner,
+Treasury, finalizer and Operator payouts remain independent. FIDDY uses a fixed-recipient protocol
+exit; the receiver's ordinary transfers remain restricted. A recipient-directed FIDDY claim pays
+only the recipient itself or the Treasury recipient. Recipient liabilities are excluded
+from absorbable surplus. This release requires fresh deployment; historical validators retain
+their deployment-specific tuple layouts.
