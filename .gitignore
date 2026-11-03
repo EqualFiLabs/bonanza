@@ -20,3 +20,4 @@ cache-statics/
 
 /.legacy-build/
 /out-legacy/
+/.rehearsal/
