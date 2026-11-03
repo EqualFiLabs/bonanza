@@ -39,6 +39,7 @@ contract GovernanceFacet is IGovernance {
                 || (!rewards.participation && rewards.unitsPerTicket != 0)
         ) revert FiddyErrors.InvalidRewardsConfig();
         version = _createConfig(config);
+        LibLotteryConfig.validateAllocation(config, rewards.stakerProtocolBps);
         LibFiddyStorage.state().configs[version] = rewards;
         if (rewards.stakerProtocolBps != 0) LibFiddyStaking.list(config.paymentToken);
         emit FiddyConfigCreated(version, rewards);

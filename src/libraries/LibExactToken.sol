@@ -7,6 +7,8 @@ import { SafeERC20 } from "openzeppelin-contracts/contracts/token/ERC20/utils/Sa
 import { IFiddyProtocol } from "../interfaces/IFiddyProtocol.sol";
 import { LibLotteryStorage } from "./LibLotteryStorage.sol";
 
+import { Round } from "../shared/Types.sol";
+
 import { Errors } from "../shared/Errors.sol";
 import { FiddyErrors } from "../shared/FiddyErrors.sol";
 
@@ -34,17 +36,29 @@ library LibExactToken {
     }
 
     function pushExact(address asset, address receiver, uint256 amount) internal {
+        if (asset == address(this)) {
+            // Ordinary FIDDY payouts leave custody only to the caller or Treasury. The
+            // fixed round recipient has a separate exit below.
+            if (
+                receiver != msg.sender
+                    && receiver != LibLotteryStorage.governanceStorage().treasuryRecipient
+            ) revert FiddyErrors.ReceiverRestricted(receiver);
+        }
+        _pushExact(asset, receiver, amount);
+    }
+
+    /// @dev A separate protocol exit fixed to the round's configured recipient. It cannot be
+    /// used to redirect winner, finalizer or staking withdrawals around FIDDY restrictions.
+    function pushRoundRecipientExact(Round storage round, uint256 amount) internal {
+        _pushExact(round.config.paymentToken, round.config.recipient, amount);
+    }
+
+    function _pushExact(address asset, address receiver, uint256 amount) private {
         IERC20 token = IERC20(asset);
         uint256 senderBefore = token.balanceOf(address(this));
         uint256 receiverBefore = token.balanceOf(receiver);
 
         if (asset == address(this)) {
-            // FIDDY leaves custody only to the caller or Treasury, so protocol payouts cannot
-            // route around the transfer restriction.
-            if (
-                receiver != msg.sender
-                    && receiver != LibLotteryStorage.governanceStorage().treasuryRecipient
-            ) revert FiddyErrors.ReceiverRestricted(receiver);
             IFiddyProtocol(address(this)).protocolMoveFiddy(address(this), receiver, amount);
         } else {
             token.safeTransfer(receiver, amount);

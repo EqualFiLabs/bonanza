@@ -10,6 +10,8 @@ struct LotteryConfig {
     uint32 maxTicketsPerPurchase;
     uint16 winnerBps;
     uint16 operatorProtocolBps;
+    uint16 recipientBps; // Share of gross receipts; zero disables the allocation.
+    address recipient;
     uint96 finalizerTip;
 }
 
@@ -35,6 +37,8 @@ struct RoundConfigSnapshot {
     uint32 maxTicketsPerPurchase;
     uint16 winnerBps;
     uint16 operatorProtocolBps;
+    uint16 recipientBps; // Share of gross receipts; zero disables the allocation.
+    address recipient;
     uint96 finalizerTip;
 }
 
@@ -53,6 +57,7 @@ struct Round {
     address winner;
     uint256 receipts;
     uint256 winnerClaimable;
+    uint256 recipientClaimable;
     bytes32 applicationSeed;
 }
 
@@ -64,7 +69,8 @@ struct TicketRange {
 struct AssetAccounting {
     uint256 activeRoundEscrow;
     uint256 winnerLiability;
-    uint256 refundLiability; // Reserved legacy storage slot; always zero for new rounds.
+    uint256 recipientLiability;
+    uint256 refundLiability; // Unused and always zero; not a preserved slot in this layout.
     uint256 finalizerLiability;
     uint256 pendingOperatorRevenueTotal;
     uint256 treasuryAvailable;

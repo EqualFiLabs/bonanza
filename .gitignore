@@ -18,5 +18,8 @@ __pycache__/
 out-statics/
 cache-statics/
 
+/test/formal/
+/x-ray/
 /.legacy-build/
 /out-legacy/
+/.rehearsal/

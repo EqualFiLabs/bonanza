@@ -1,0 +1,12 @@
+{
+  "chainId": 4663,
+  "staticsCommit": "5027bfaa58af7309d53fca0f32ae574d87420f83",
+  "drand": {
+    "address": "0xB1a30ff19243Af135003E541769dD520DA1acC2B",
+    "runtimeCodeHash": "0x3920a29fca45c90027fc2e69f362a9242b6f64b023016422c6f2f3150957a1c7",
+    "deploymentBlock": 101161759,
+    "sourceCommit": "f530316ae1bb4f22e3974879fb5f9330b046cc76",
+    "manifest": "https://github.com/EqualFiLabs/drand-registry/blob/main/deployments/robinhood-mainnet.json"
+  },
+  "quicknetChainHash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
+}

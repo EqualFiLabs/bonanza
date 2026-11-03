@@ -531,7 +531,8 @@ uint256 winnerAmount = Math.mulDiv(gross, round.config.winnerBps, BPS);
 uint256 protocolAmount = gross - winnerAmount;
 uint256 operatorAmount = Math.mulDiv(protocolAmount, round.config.operatorProtocolBps, BPS);
 uint256 stakerAmount = stakerAccrued[roundId]; // booked per purchase, zero without FIDDY rewards
-uint256 treasuryGross = protocolAmount - operatorAmount - stakerAmount;
+uint256 recipientAmount = Math.mulDiv(gross, round.config.recipientBps, BPS);
+uint256 treasuryGross = protocolAmount - operatorAmount - stakerAmount - recipientAmount;
 uint256 finalizerTip = Math.min(round.config.finalizerTip, treasuryGross);
 uint256 treasuryNet = treasuryGross - finalizerTip;
 ```
@@ -541,7 +542,7 @@ Rounding flows toward Treasury because allocations are calculated downward and r
 Therefore:
 
 ```text
-winner + operator + staker + treasuryNet + finalizerTip = gross
+winner + operator + recipient + staker + treasuryNet + finalizerTip = gross
 ```
 
 exactly.
@@ -556,11 +557,13 @@ Round.winningTicket = winningTicket
 Round.winner = winner
 Round.applicationSeed = seed
 Round.winnerClaimable = winnerAmount
+Round.recipientClaimable = recipientAmount
 activeRoundForConfig[round.configVersion] = 0
 activeRoundCount -= 1
 AssetAccounting storage accounting = assetAccounting[round.config.paymentToken]
 accounting.activeRoundEscrow -= gross - stakerAmount
 accounting.winnerLiability += winnerAmount
+accounting.recipientLiability += recipientAmount
 pendingOperatorRevenue[round.integrationVersion][round.config.paymentToken] += operatorAmount
 accounting.pendingOperatorRevenueTotal += operatorAmount
 accounting.treasuryAvailable += treasuryNet
@@ -726,6 +729,7 @@ Accounted value for token `asset` is:
 ```text
 assetAccounting[asset].activeRoundEscrow
 + assetAccounting[asset].winnerLiability
++ assetAccounting[asset].recipientLiability
 + assetAccounting[asset].refundLiability
 + assetAccounting[asset].finalizerLiability
 + assetAccounting[asset].pendingOperatorRevenueTotal
@@ -959,6 +963,8 @@ struct LotteryConfig {
     uint32 maxTicketsPerPurchase;
     uint16 winnerBps;
     uint16 operatorProtocolBps;
+    uint16 recipientBps;
+    address recipient;
     uint96 finalizerTip;
 }
 ```
@@ -1011,6 +1017,8 @@ struct RoundConfigSnapshot {
     uint32 maxTicketsPerPurchase;
     uint16 winnerBps;
     uint16 operatorProtocolBps;
+    uint16 recipientBps;
+    address recipient;
     uint96 finalizerTip;
 }
 ```
@@ -1035,6 +1043,7 @@ struct Round {
     address winner;
     uint256 receipts;
     uint256 winnerClaimable;
+    uint256 recipientClaimable;
     bytes32 applicationSeed;
 }
 ```
@@ -1104,7 +1113,8 @@ bytes32 constant ACCOUNTING_SLOT = keccak256("statics.lottery.storage.accounting
 struct AssetAccounting {
     uint256 activeRoundEscrow;
     uint256 winnerLiability;
-    uint256 refundLiability; // Reserved legacy slot; zero for new Rounds.
+    uint256 recipientLiability;
+    uint256 refundLiability; // Unused and always zero; not a preserved slot in this layout.
     uint256 finalizerLiability;
     uint256 pendingOperatorRevenueTotal;
     uint256 treasuryAvailable;
@@ -1279,7 +1289,7 @@ function pullExact(address asset, address from, uint256 amount) internal;
 function pushExact(address asset, address to, uint256 amount) internal;
 ```
 
-`pullExact` measures both the payer's spend and the Diamond's receipt. `pushExact` measures both the Diamond's spend and the receiver's receipt. Each function uses `SafeERC20` and reverts with `InexactTokenTransfer` unless both deltas equal `amount`. Purchases use `pullExact`; winner, finalizer, and Treasury transfers use `pushExact`. Router ingress uses `forceApprove` followed by `OperatorFeeRouter.addRewards`, whose reviewed implementation independently enforces exact contributor-spend and Router-receipt deltas.
+`pullExact` measures both the payer's spend and the Diamond's receipt. `pushExact` measures both the Diamond's spend and the receiver's receipt. Each function uses `SafeERC20` and reverts with `InexactTokenTransfer` unless both deltas equal `amount`. Purchases use `pullExact`; winner, finalizer, Treasury, and recipient-directed claim transfers use `pushExact`. Router ingress uses `forceApprove` followed by `OperatorFeeRouter.addRewards`, whose reviewed implementation independently enforces exact contributor-spend and Router-receipt deltas.
 
 # Pause Semantics
 
@@ -1297,6 +1307,8 @@ settleRound
 claimWinner
 claimFinalizerTips
 flushOperatorRevenue
+flushRecipientRevenue
+claimRecipientRevenue
 flushTreasury
 absorbTokenSurplus
 view functions
@@ -1353,10 +1365,12 @@ event RoundOpened(uint256 indexed roundId, uint64 indexed configVersion, uint64 
 event TicketsPurchased(uint256 indexed roundId, address indexed buyer, address indexed paymentToken, uint32 startTicket, uint32 quantity, uint32 endExclusive, uint256 amount);
 event RoundDrawScheduled(uint256 indexed roundId, uint64 salesCloseAt, uint64 drandRound);
 event RoundSoldOut(uint256 indexed roundId, uint64 selloutAt, uint64 drandRound);
-event RoundSettled(uint256 indexed roundId, uint32 indexed winningTicket, address indexed winner, address paymentToken, address finalizer, bytes32 applicationSeed, uint256 winnerAmount, uint256 operatorAmount, uint256 treasuryAmount, uint256 finalizerTip);
+event RoundSettled(uint256 indexed roundId, uint32 indexed winningTicket, address indexed winner, address paymentToken, address finalizer, bytes32 applicationSeed, uint256 winnerAmount, uint256 operatorAmount, uint256 recipientAmount, uint256 treasuryAmount, uint256 finalizerTip);
 event WinnerClaimed(uint256 indexed roundId, address indexed winner, address indexed receiver, address paymentToken, uint256 amount);
 event FinalizerTipClaimed(address indexed finalizer, address indexed asset, address indexed receiver, uint256 amount);
 event OperatorRevenueFlushed(uint64 indexed integrationVersion, address indexed asset, address indexed caller, uint256 amount);
+event RecipientRevenueFlushed(uint256 indexed roundId, address indexed asset, address indexed recipient, uint256 amount);
+event RecipientRevenueClaimed(uint256 indexed roundId, address indexed asset, address indexed recipient, address receiver, uint256 amount);
 event TreasuryFlushed(address indexed asset, address indexed recipient, uint256 amount);
 event TokenSurplusAbsorbed(address indexed asset, uint256 amount);
 event GuardianUpdated(address indexed previousGuardian, address indexed newGuardian);
@@ -1626,3 +1640,44 @@ only through PositionNFT `ownerOf`, an accepted trust assumption.
 The external-account binding uses the reduced seven-selector ERC-165 interface, with no
 ownership-journal methods or events. Actual-source integration builds a matching pinned Statics
 dependency and checks full ABI parity before exercising account creation, sale and cleanup.
+
+## Optional recipient allocation (Requirement 27)
+
+This is a greenfield ABI/storage change. `LotteryConfig` and `RoundConfigSnapshot` directly
+include `recipientBps` and `recipient`; `Round` directly includes `recipientClaimable`, and
+`AssetAccounting` includes `recipientLiability`. Existing creation functions accept the extended
+config type; initialization, events and selector manifests use that ABI. There are no migration
+paths, alternate creation functions or additional storage namespaces. Initial defaults use zero
+recipient BPS and address.
+
+For `B = 10000`, validate `operatorProtocolBps + stakerProtocolBps <= B` and
+`recipientBps * B <= (B - winnerBps) * (B - operatorProtocolBps - stakerProtocolBps)`.
+Plain configurations use zero staker BPS. This budgets the gross-based recipient allocation
+alongside existing protocol-based Operator and purchase-time staker allocations. Each allocation
+rounds down; residual value goes to Treasury, and its capped finalizer tip is applied last.
+The combined bound ensures staker floors plus the recipient amount never exceed the remainder.
+
+`flushRecipientRevenue(uint256 roundId) returns (uint256)` requires a settled Round and positive
+claim, clears its entire claim and per-token liability before interacting, then sends exactly that
+amount to `round.config.recipient`. Anyone can call it, including while paused, but nobody can
+choose another receiver. A failure rolls back all changes. It emits
+`RecipientRevenueFlushed(roundId, paymentToken, recipient, amount)`.
+
+`claimRecipientRevenue(uint256 roundId, address receiver) returns (uint256)` lets only the
+snapshotted recipient claim the same full allocation to a receiver it chooses, so an address that
+can no longer receive the Payment Token (for example after an issuer freeze) can still recover it.
+It rejects the zero address and the Diamond as receiver, reuses the settled-round and positive-claim
+checks, clears the claim and liability before interacting, and sends through `pushExact`. Governance
+and other accounts still cannot choose the receiver. It remains available while paused and emits
+`RecipientRevenueClaimed(roundId, paymentToken, recipient, receiver, amount)`. Settlement includes
+`recipientAmount` in `RoundSettled` and performs no token calls. Existing views expose the new
+fields, and surplus accounting includes the aggregate liability.
+
+For FIDDY, the fixed-recipient delivery is a separate narrowly scoped protocol movement using the
+existing exact movement capability and balance-delta checks. Generic payout receiver checks and
+restricted ordinary token transfers remain enforced; a recipient-directed FIDDY claim therefore
+pays only the recipient itself or the Treasury recipient. Historical manifests and their pinned
+validators describe older deployments and do not qualify this release.
+
+Example: `winnerBps = 5000`, `operatorProtocolBps = 500`, `recipientBps = 4500`, zero staker
+BPS yields 50% Winner, 2.5% Operators, 45% recipient and 2.5% Treasury before its finalizer tip.

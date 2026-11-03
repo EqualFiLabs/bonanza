@@ -682,6 +682,8 @@ contract LotteryPurchasesTest is Test {
             maxTicketsPerPurchase: limit,
             winnerBps: 8000,
             operatorProtocolBps: 5000,
+            recipientBps: 0,
+            recipient: address(0),
             finalizerTip: 1
         });
     }

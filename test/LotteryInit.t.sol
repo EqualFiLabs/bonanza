@@ -94,6 +94,24 @@ contract LotteryInitTest is Test {
         assertEq(_countTopic(logs, IGovernance.LotteryConfigEnabled.selector), 2);
     }
 
+    function test_InitialRecipientAllocationIsValidatedAtomically() public {
+        LotteryInit.InitParams memory params = _validParams();
+        params.lotteryConfigs[0].recipientBps = 1001;
+        params.lotteryConfigs[0].recipient = makeAddr("initial recipient");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Errors.InitializationFailed.selector,
+                abi.encodeWithSelector(Errors.InvalidConfig.selector)
+            )
+        );
+        _initialize(params);
+        params.lotteryConfigs[0].recipientBps = 1000;
+        _initialize(params);
+        (LotteryConfig memory stored,) = ILotteryView(address(diamond)).lotteryConfig(1);
+        assertEq(stored.recipient, params.lotteryConfigs[0].recipient);
+        assertEq(stored.recipientBps, 1000);
+    }
+
     function test_RejectsRepeatedInitialization() public {
         LotteryInit.InitParams memory params = _validParams();
         _initialize(params);
@@ -211,6 +229,8 @@ contract LotteryInitTest is Test {
             maxTicketsPerPurchase: 10,
             winnerBps: 8000,
             operatorProtocolBps: 5000,
+            recipientBps: 0,
+            recipient: address(0),
             finalizerTip: price / 100
         });
     }

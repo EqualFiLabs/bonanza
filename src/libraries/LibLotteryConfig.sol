@@ -16,8 +16,33 @@ library LibLotteryConfig {
             config.ticketPrice == 0 || config.ticketCount == 0 || config.salesDuration == 0
                 || config.winnerBps > BPS_DENOMINATOR
                 || config.operatorProtocolBps > BPS_DENOMINATOR
+                || config.recipientBps > BPS_DENOMINATOR
                 || (config.maxTicketsPerPurchase != 0
                     && config.maxTicketsPerPurchase > config.ticketCount)
+        ) {
+            revert Errors.InvalidConfig();
+        }
+        if (
+            config.recipientBps != 0
+                && (config.recipient == address(0) || config.recipient == address(this))
+        ) {
+            revert Errors.InvalidAddress();
+        }
+        validateAllocation(config, 0);
+    }
+
+    /// @dev Recipient BPS is gross-based; Operator and staker BPS apply to the non-winner share.
+    function validateAllocation(LotteryConfig memory config, uint16 stakerProtocolBps)
+        internal
+        pure
+    {
+        uint256 protocolBps = uint256(config.operatorProtocolBps) + stakerProtocolBps;
+        if (config.winnerBps > BPS_DENOMINATOR || protocolBps > BPS_DENOMINATOR) {
+            revert Errors.InvalidConfig();
+        }
+        if (
+            uint256(config.recipientBps) * BPS_DENOMINATOR
+                > (BPS_DENOMINATOR - uint256(config.winnerBps)) * (BPS_DENOMINATOR - protocolBps)
         ) {
             revert Errors.InvalidConfig();
         }
@@ -42,6 +67,8 @@ library LibLotteryConfig {
             maxTicketsPerPurchase: config.maxTicketsPerPurchase,
             winnerBps: config.winnerBps,
             operatorProtocolBps: config.operatorProtocolBps,
+            recipientBps: config.recipientBps,
+            recipient: config.recipient,
             finalizerTip: config.finalizerTip
         });
     }

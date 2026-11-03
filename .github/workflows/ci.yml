@@ -14,6 +14,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  rehearsal-safety:
+    name: Fork runner safety
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install runner dependencies
+        run: python3 -m pip install -r script/mainnet-rehearsal/requirements.txt
+      - name: Check local-only guards and evidence gates
+        run: |
+          bash -n script/mainnet-rehearsal/run.sh
+          python3 -m py_compile script/mainnet-rehearsal/*.py
+          python3 -m unittest discover -s script/mainnet-rehearsal -p 'test_*.py' -v
   foundry:
     name: Foundry
     runs-on: ubuntu-latest
@@ -33,9 +46,6 @@ jobs:
         run: |
           forge fmt --check
           forge fmt --root integration --check
-
-      - name: Build pre-FIDDY upgrade baseline
-        run: bash script/build-legacy-baseline.sh
 
       - name: Build pinned Statics candidate independently
         run: forge build --config-path integration/foundry.toml

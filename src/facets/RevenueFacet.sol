@@ -10,7 +10,7 @@ import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
 import { LibOperatorFeeRouter } from "../libraries/LibOperatorFeeRouter.sol";
 import { LibReentrancy } from "../libraries/LibReentrancy.sol";
 import { Errors } from "../shared/Errors.sol";
-import { AssetAccounting, IntegrationConfig } from "../shared/Types.sol";
+import { AssetAccounting, IntegrationConfig, Round, RoundStatus } from "../shared/Types.sol";
 
 contract RevenueFacet is IRevenue {
     modifier nonReentrant() {
@@ -47,6 +47,40 @@ contract RevenueFacet is IRevenue {
         return amount;
     }
 
+    /// @notice Anyone may deliver the full settled allocation to its snapshotted recipient.
+    function flushRecipientRevenue(uint256 roundId)
+        external
+        nonReentrant
+        returns (uint256 flushed)
+    {
+        Round storage round = _settledRound(roundId);
+        flushed = _clearRecipientRevenue(round);
+        LibExactToken.pushRoundRecipientExact(round, flushed);
+        emit RecipientRevenueFlushed(
+            roundId, round.config.paymentToken, round.config.recipient, flushed
+        );
+    }
+
+    /// @notice The snapshotted recipient may claim its full allocation to a receiver it chooses,
+    /// so an address that can no longer receive the Payment Token can still recover it.
+    /// FIDDY keeps the ordinary caller-or-Treasury receiver restriction.
+    function claimRecipientRevenue(uint256 roundId, address receiver)
+        external
+        nonReentrant
+        returns (uint256 claimed)
+    {
+        if (receiver == address(0) || receiver == address(this)) {
+            revert Errors.InvalidAddress();
+        }
+        Round storage round = _settledRound(roundId);
+        if (msg.sender != round.config.recipient) revert Errors.NotRecipient(msg.sender);
+        claimed = _clearRecipientRevenue(round);
+        LibExactToken.pushExact(round.config.paymentToken, receiver, claimed);
+        emit RecipientRevenueClaimed(
+            roundId, round.config.paymentToken, msg.sender, receiver, claimed
+        );
+    }
+
     function flushTreasury(address asset, uint256 amount)
         external
         nonReentrant
@@ -80,7 +114,7 @@ contract RevenueFacet is IRevenue {
         uint256 accounted = accounting.activeRoundEscrow + accounting.winnerLiability
             + accounting.refundLiability + accounting.finalizerLiability
             + accounting.pendingOperatorRevenueTotal + accounting.treasuryAvailable
-            + LibFiddy.extraReserved(asset);
+            + accounting.recipientLiability + LibFiddy.extraReserved(asset);
         uint256 balance = IERC20(asset).balanceOf(address(this));
         return balance > accounted ? balance - accounted : 0;
     }
@@ -103,5 +137,21 @@ contract RevenueFacet is IRevenue {
         (bool success,) = payable(recipient).call{ value: amount }("");
         if (!success) revert Errors.NativeTransferFailed();
         emit NativeSurplusFlushed(recipient, amount);
+    }
+
+    function _settledRound(uint256 roundId) private view returns (Round storage round) {
+        round = LibLotteryStorage.gameStorage().rounds[roundId];
+        if (round.status == RoundStatus.None) revert Errors.RoundNotFound(roundId);
+        if (round.status != RoundStatus.Settled) revert Errors.RoundNotSettled(roundId);
+    }
+
+    /// @dev Clears the whole claim and its per-token liability before any token interaction.
+    function _clearRecipientRevenue(Round storage round) private returns (uint256 amount) {
+        amount = round.recipientClaimable;
+        if (amount == 0) revert Errors.NoRecipientRevenue();
+        round.recipientClaimable = 0;
+        LibLotteryStorage.accountingStorage()
+                .assetAccounting[round.config.paymentToken]
+                .recipientLiability -= amount;
     }
 }
