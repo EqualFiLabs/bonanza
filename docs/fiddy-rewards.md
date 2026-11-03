@@ -236,7 +236,70 @@ public wraps, not total wrapped supply. Every unit stays fully backed either way
 
 Actual-candidate local integration and block-pinned fork evidence are separate from
 deployment. This extension authorizes no live transactions or conversion activation.
-Historical formal reports do not prove the new system.
+
+### Formal verification summary
+
+These results apply only to the historical candidate below. They do not cover the optional
+recipient allocation or the current ABI and storage layout.
+
+A candidate-bound campaign supplements the historical reports. It binds production source at
+`de6b9b713d5de2f8e4a297e1c16a9992ecc5b3db`, tree
+`3276d74d4f88c8a39087bddfd17ed40c613a6d8f`, to Solidity 0.8.30 and these deployed-bytecode
+SHA-256 hashes:
+
+```text
+FiddyStakingFacet  426f1d1f92597ed28efd25083578e8dc92457ee05578ab564bf8f2e833879280
+FiddyTokenFacet    b84177b385fe3b706ecf0621032a222aa433de3d6d5d1f368b395af2e5eb7d8c
+LotteryFacet       376a1ab2a9b55b424f27fc6b7ffe852eaf9863c28d36505a9d7b76daefe826d6
+RevenueFacet       36891f8a1582f9050e15b32af4ebb4fa0240c18bbc1b88a40d8f6239ec3e4547
+SettlementFacet    f4bdc1a9ad4569711eb4e07c0abe6357b7210431b066a9160934653a2f6360a7
+```
+
+Certora verifies the following production transitions:
+
+- reserve funding, participation, public wrap and unwrap preserve one-to-one backing and move
+  supply, inventory, custody and outstanding wrap accounting together;
+- every FIDDY Payment Token category is counted once and surplus absorption cannot consume any
+  category;
+- initialization binds once, preserves legacy state, leaves every optional feature disabled,
+  rolls back invalid bindings and uses a namespace distinct from existing Lottery storage;
+- allowance cannot bypass restricted transfer rules, consumers cannot withdraw protocol custody,
+  and exact protocol movement capabilities reject mismatch, replay, external callers and leaked
+  authorization after revert;
+- PositionNFT transfer preserves account state while moving authority, failed attachment and
+  detachment roll back atomically, cleanup rejects whole claims and surrenders only sub-unit dust;
+- reward snapshots are immutable, issuance is inventory-capped without debt, opening and later
+  participation use equivalent snapshots, repeat asset listing is idempotent and the 65th distinct
+  revenue asset is rejected;
+- bounded stake-lock rules prove first-stake initialization, safe timestamp conversion, no lock
+  shortening and immediate relocking for nonzero top-ups when prior stake is at most `uint128`.
+  Three additional nonvacuous rules establish that the canonical one-billion STATICS supply is
+  below `uint128`, and that the production stake and unstake entry points preserve this bound from
+  any account state where stake does not exceed its cap-bounded balance;
+- booking and zero-accrual boost forfeiture conserve reserved plus Treasury value, while full-width
+  settlement rules prove the per-purchase staker bound, aggregate settleability, five-way
+  allocation conservation and escrow reclassification without double counting;
+- six nonvacuous compositional rules cover nonzero boost forfeiture for one listed asset with
+  `uint32` primary stake, other stake and excess weight, where excess is at most 25% of base and the
+  index delta is exactly one RAY. They prove the seeded ledger is conserved, the forfeiter retains
+  base accrual, excess routes to Treasury when no other weight exists or redistributes only to other
+  weight otherwise, the forfeiter cannot share its redistribution, and the post-state remains
+  conserved.
+
+The unconstrained full-width `uint256` stake-lock theorem remains open as robustness beyond the
+deployment invariant, rather than as a reachable-state gap. The reachable-state conclusion assumes
+the immutable canonical STATICS supply of `1_000_000_000 ether` and the separately verified FIDDY
+backing and account-balance conservation properties. Its combined Halmos campaign did not finish
+within 2,100 seconds, and two isolated partition checks each reached a separate 600-second bound. A
+full-width Certora attempt was also excluded because its reported traces explicitly identified
+bitwise-model imprecision in the 512-bit `Math.mulDiv` path; both reported examples passed when
+replayed against compiled Solidity. Arbitrary nonzero index magnitudes and fractional dust in boost
+forfeiture also remain outside the new compositional proof. Concrete nonzero-accrual boost, booking
+and settlement fuzz controls passed 1,024 runs each. The formal models use deterministic
+exact-transfer token and PositionNFT peers; the 64-asset boundary is unrolled through its required
+exit check. Certora CLI 8.18.0 uses the pinned prover revision
+`f5f77783430449791186f7812ebd53addf22cabd` with Z3 4.16.0. Generated specifications, logs and
+reports remain in private evidence; this section is the versioned summary.
 
 ## Client and deployment preparation
 

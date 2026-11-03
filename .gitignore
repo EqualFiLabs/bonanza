@@ -20,3 +20,6 @@ cache-statics/
 
 /test/formal/
 /x-ray/
+/.legacy-build/
+/out-legacy/
+/.rehearsal/
