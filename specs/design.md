@@ -1637,6 +1637,9 @@ and both NFT owners directly; an invalid boost forfeits its excess since the las
 the other stakers. The Lottery does not read Statics NFT transfer history. Exits depend on Statics
 only through PositionNFT `ownerOf`, an accepted trust assumption.
 
+The external-account binding uses the reduced seven-selector ERC-165 interface, with no
+ownership-journal methods or events. Actual-source integration builds a matching pinned Statics
+dependency and checks full ABI parity before exercising account creation, sale and cleanup.
 
 ## Optional recipient allocation (Requirement 27)
 

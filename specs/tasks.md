@@ -21,6 +21,7 @@ No chain deployment, public conversion activation, AMM construction or sibling-r
 - [x] Expose the per-account nonce.
 - [x] Initialize FIDDY with the deployment Diamond cut.
 
+- [x] Use the reduced seven-selector Statics interface and qualify a matching pinned dependency.
 
 ## Optional round recipient (Requirement 27)
 

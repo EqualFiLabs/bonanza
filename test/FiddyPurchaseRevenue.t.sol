@@ -4,7 +4,6 @@ import { FiddyRevenueSetup } from "./FiddyStaking.t.sol";
 import { IntegrationToken } from "./utils/LotteryIntegrationSetup.sol";
 import { SettlementFacet } from "../src/facets/SettlementFacet.sol";
 import { ISettlement } from "../src/interfaces/ISettlement.sol";
-import { IStaticsExternalModules } from "../src/interfaces/IStaticsExternalModules.sol";
 import { LibFiddyStaking } from "../src/libraries/LibFiddyStaking.sol";
 import { FiddyAsset, FiddyConfig, FiddyCredit } from "../src/shared/FiddyTypes.sol";
 import { FiddyErrors } from "../src/shared/FiddyErrors.sol";
@@ -323,29 +322,9 @@ contract FiddyPurchaseRevenueTest is FiddyRevenueSetup {
         assertEq(count, 64);
     }
 
-    function testSettlementAndExitsIgnoreStaticsTransferHistory() public {
+    function testSettlementAndExitsUseLocalAccounting() public {
         _start();
         skip(LibFiddyStaking.STAKE_LOCK);
-        vm.mockCallRevert(
-            address(positions),
-            abi.encodeWithSelector(IStaticsExternalModules.transferHead.selector),
-            ""
-        );
-        vm.mockCallRevert(
-            address(positions),
-            abi.encodeWithSelector(IStaticsExternalModules.transferChanges.selector),
-            ""
-        );
-        vm.mockCallRevert(
-            address(positions),
-            abi.encodeWithSelector(IStaticsExternalModules.transferState.selector),
-            ""
-        );
-        vm.mockCallRevert(
-            address(positions),
-            abi.encodeWithSelector(IStaticsExternalModules.historyCoverage.selector),
-            ""
-        );
         uint256 id = _settle(address(tokenB), false);
         assertEq(uint8(stateView.round(id).status), 3);
         staking.checkpointFiddyAccount(1);

@@ -427,7 +427,7 @@ A settled Round state from which ticket purchases can never resume. The legacy e
 
 1. THE Lottery SHALL delegate Quicknet proof verification and beacon caching to `EqualFiDrandRegistry`.
 2. THE Lottery SHALL delegate Statics Operator reward distribution to `OperatorFeeRouter`.
-3. Reward-enabled operation SHALL use only the generic Statics external-account lifecycle, its interface binding check and PositionNFT `ownerOf`; product custody and accounting remain in the Lottery. The Lottery SHALL NOT depend on Statics NFT transfer history.
+3. Reward-enabled operation SHALL use only the generic Statics external-account lifecycle, its reduced seven-selector ERC-165 interface binding check and PositionNFT `ownerOf`; product custody and accounting remain in the Lottery. The Lottery SHALL NOT depend on Statics NFT transfer history.
 4. THE Lottery SHALL NOT maintain its own copy of Statics Operator ownership or activation-weight accounting.
 5. THE Lottery SHALL NOT maintain its own BLS12-381 verification implementation.
 6. A failure in Operator reward ingress SHALL NOT block the lottery lifecycle.
