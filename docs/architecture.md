@@ -69,7 +69,7 @@ The implementation uses stable `keccak256` namespace slots rather than a shared 
 | `statics.lottery.storage.integration.v1` | append-only Registry/Router versions |
 | `statics.lottery.storage.accounting.v1` | per-token liabilities, versioned Operator buckets, finalizer credits, admitted tokens |
 | `statics.lottery.storage.governance.v1` | guardian, Treasury recipient, pause state |
-| `statics.lottery.storage.bonanza.v1` | BONANZA extensions, reserves, accounts, registrations, revenue indexes and per-round staker revenue |
+| `statics.lottery.storage.fiddy.v1` | BONANZA extensions, reserves, accounts, registrations, revenue indexes and per-round staker revenue |
 | OpenZeppelin ERC-7201 ERC20 namespace | ERC-20 balances, allowances and supply |
 | `statics.lottery.storage.reentrancy.v1` | Diamond-wide value-path reentrancy state |
 
