@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.30;
 
-import { FiddyTokenFacet } from "../src/facets/FiddyTokenFacet.sol";
-import { FiddyStakingFacet } from "../src/facets/FiddyStakingFacet.sol";
-import { FiddyViewFacet } from "../src/facets/FiddyViewFacet.sol";
-import { FiddySelectors } from "../src/libraries/FiddySelectors.sol";
+import { BonanzaTokenFacet } from "../src/facets/BonanzaTokenFacet.sol";
+import { BonanzaStakingFacet } from "../src/facets/BonanzaStakingFacet.sol";
+import { BonanzaViewFacet } from "../src/facets/BonanzaViewFacet.sol";
+import { BonanzaSelectors } from "../src/libraries/BonanzaSelectors.sol";
 import { Script } from "forge-std/Script.sol";
 
 import { StaticsLotteryDiamond } from "../src/StaticsLotteryDiamond.sol";
@@ -27,7 +27,7 @@ import { IOperatorFeeRouter } from "../src/interfaces/IOperatorFeeRouter.sol";
 import { IRevenue } from "../src/interfaces/IRevenue.sol";
 import { ISettlement } from "../src/interfaces/ISettlement.sol";
 import { FacetCut, FacetCutAction } from "../src/shared/DiamondTypes.sol";
-import { FiddyBindings } from "../src/shared/FiddyTypes.sol";
+import { BonanzaBindings } from "../src/shared/BonanzaTypes.sol";
 import { IntegrationConfig, LotteryConfig } from "../src/shared/Types.sol";
 
 interface IConfiguredOperatorFeeRouter is IOperatorFeeRouter {
@@ -80,9 +80,9 @@ contract DeployLottery is Script {
         address revenueFacet;
         address viewFacet;
         address initializer;
-        address fiddyTokenFacet;
-        address fiddyStakingFacet;
-        address fiddyViewFacet;
+        address bonanzaTokenFacet;
+        address bonanzaStakingFacet;
+        address bonanzaViewFacet;
     }
 
     error DependencyCodeHashMismatch(address dependency, bytes32 expected, bytes32 actual);
@@ -99,9 +99,9 @@ contract DeployLottery is Script {
         if (deployer != EXPECTED_DEPLOYER) revert UnexpectedDeployer(deployer);
 
         address operatorFeeRouter = vm.envAddress("LOTTERY_OPERATOR_FEE_ROUTER");
-        // The Statics PositionNFT that implements the external account module interface. FIDDY
+        // The Statics PositionNFT that implements the external account module interface. BONANZA
         // initialization verifies its code and interface in the same transaction as the cut.
-        address positionNFT = vm.envAddress("LOTTERY_FIDDY_POSITION_NFT");
+        address positionNFT = vm.envAddress("LOTTERY_BONANZA_POSITION_NFT");
         _validateDependencies(operatorFeeRouter);
 
         vm.startBroadcast(deployerKey);
@@ -123,9 +123,9 @@ contract DeployLottery is Script {
         deployment.revenueFacet = address(new RevenueFacet());
         deployment.viewFacet = address(new LotteryViewFacet());
         deployment.initializer = address(new LotteryInit());
-        deployment.fiddyTokenFacet = address(new FiddyTokenFacet());
-        deployment.fiddyStakingFacet = address(new FiddyStakingFacet());
-        deployment.fiddyViewFacet = address(new FiddyViewFacet());
+        deployment.bonanzaTokenFacet = address(new BonanzaTokenFacet());
+        deployment.bonanzaStakingFacet = address(new BonanzaStakingFacet());
+        deployment.bonanzaViewFacet = address(new BonanzaViewFacet());
 
         _initializeDiamond(deployment, authority, operatorFeeRouter, positionNFT);
     }
@@ -145,9 +145,9 @@ contract DeployLottery is Script {
         cuts[5] = _cut(deployment.revenueFacet, _revenueSelectors());
         cuts[6] = _cut(deployment.viewFacet, _viewSelectors());
 
-        cuts[7] = _cut(deployment.fiddyTokenFacet, FiddySelectors.token());
-        cuts[8] = _cut(deployment.fiddyStakingFacet, FiddySelectors.staking());
-        cuts[9] = _cut(deployment.fiddyViewFacet, FiddySelectors.views());
+        cuts[7] = _cut(deployment.bonanzaTokenFacet, BonanzaSelectors.token());
+        cuts[8] = _cut(deployment.bonanzaStakingFacet, BonanzaSelectors.staking());
+        cuts[9] = _cut(deployment.bonanzaViewFacet, BonanzaSelectors.views());
 
         LotteryConfig[] memory configs = new LotteryConfig[](2);
         configs[0] = _lotteryConfig(WETH, WETH_TICKET_PRICE, WETH_FINALIZER_TIP);
@@ -161,13 +161,13 @@ contract DeployLottery is Script {
             lotteryConfigs: configs
         });
 
-        FiddyBindings memory fiddy =
-            FiddyBindings(STATICS, positionNFT, OPERATOR_COLLECTION, ACTIVATION_REGISTRY);
+        BonanzaBindings memory bonanza =
+            BonanzaBindings(STATICS, positionNFT, OPERATOR_COLLECTION, ACTIVATION_REGISTRY);
         IDiamondCut(deployment.diamond)
             .diamondCut(
                 cuts,
                 deployment.initializer,
-                abi.encodeCall(LotteryInit.initializeWithFiddy, (params, fiddy))
+                abi.encodeCall(LotteryInit.initializeWithBonanza, (params, bonanza))
             );
     }
 

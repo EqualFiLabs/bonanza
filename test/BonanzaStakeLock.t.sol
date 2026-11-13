@@ -2,17 +2,17 @@
 pragma solidity 0.8.30;
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import { IERC721 } from "openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
-import { FiddyRevenueSetup } from "./FiddyStaking.t.sol";
-import { FiddyStaticsIntegrationTest } from "./FiddyStaticsIntegration.t.sol";
-import { FiddyTokenFacet } from "../src/facets/FiddyTokenFacet.sol";
-import { FiddyStakingFacet } from "../src/facets/FiddyStakingFacet.sol";
+import { BonanzaRevenueSetup } from "./BonanzaStaking.t.sol";
+import { BonanzaStaticsIntegrationTest } from "./BonanzaStaticsIntegration.t.sol";
+import { BonanzaTokenFacet } from "../src/facets/BonanzaTokenFacet.sol";
+import { BonanzaStakingFacet } from "../src/facets/BonanzaStakingFacet.sol";
 import { ILottery } from "../src/interfaces/ILottery.sol";
-import { LibFiddyStaking } from "../src/libraries/LibFiddyStaking.sol";
-import { FiddyConfig } from "../src/shared/FiddyTypes.sol";
-import { FiddyErrors } from "../src/shared/FiddyErrors.sol";
+import { LibBonanzaStaking } from "../src/libraries/LibBonanzaStaking.sol";
+import { BonanzaConfig } from "../src/shared/BonanzaTypes.sol";
+import { BonanzaErrors } from "../src/shared/BonanzaErrors.sol";
 import { LotteryConfig } from "../src/shared/Types.sol";
 
-/// @dev Same-transaction liquidity, as an approved FIDDY consumer or a plain STATICS lender.
+/// @dev Same-transaction liquidity, as an approved BONANZA consumer or a plain STATICS lender.
 contract SameTransactionLender {
     IERC20 internal immutable asset;
 
@@ -31,7 +31,7 @@ contract SameTransactionLender {
     }
 }
 
-/// @dev Owns a PositionNFT and tries to stake borrowed FIDDY around its own ticket purchase.
+/// @dev Owns a PositionNFT and tries to stake borrowed BONANZA around its own ticket purchase.
 contract SelfRebateStaker {
     address internal immutable diamond;
     SameTransactionLender internal immutable lender;
@@ -61,11 +61,11 @@ contract SelfRebateStaker {
 
     function consumerLeg(uint256 roundId, uint32 tickets, uint256 amount) external {
         require(msg.sender == address(lender));
-        FiddyTokenFacet token = FiddyTokenFacet(diamond);
+        BonanzaTokenFacet token = BonanzaTokenFacet(diamond);
         token.approve(diamond, amount);
-        token.depositFiddy(position, amount);
+        token.depositBonanza(position, amount);
         _stakeBuyAndExit(roundId, tickets, amount);
-        token.withdrawFiddy(position, amount);
+        token.withdrawBonanza(position, amount);
         token.transfer(address(lender), amount);
     }
 
@@ -73,29 +73,29 @@ contract SelfRebateStaker {
         require(msg.sender == address(lender));
         IERC20 underlying = IERC20(_underlying());
         underlying.approve(diamond, amount);
-        FiddyTokenFacet(diamond).wrapFiddy(position, amount);
+        BonanzaTokenFacet(diamond).wrapBonanza(position, amount);
         _stakeBuyAndExit(roundId, tickets, amount);
-        FiddyTokenFacet(diamond).unwrapFiddy(position, amount, address(this));
+        BonanzaTokenFacet(diamond).unwrapBonanza(position, amount, address(this));
         underlying.transfer(address(lender), amount);
     }
 
     function _stakeBuyAndExit(uint256 roundId, uint32 tickets, uint256 amount) private {
-        FiddyStakingFacet staking = FiddyStakingFacet(diamond);
-        staking.stakeFiddy(position, amount);
+        BonanzaStakingFacet staking = BonanzaStakingFacet(diamond);
+        staking.stakeBonanza(position, amount);
         ILottery(diamond).buyTickets(roundId, tickets);
-        staking.unstakeFiddy(position, amount);
-        staking.claimFiddyRevenue(position, address(payment), address(this));
+        staking.unstakeBonanza(position, amount);
+        staking.claimBonanzaRevenue(position, address(payment), address(this));
     }
 
     function _underlying() private view returns (address underlying) {
         (bool ok, bytes memory data) =
-            diamond.staticcall(abi.encodeWithSignature("fiddyBindings()"));
+            diamond.staticcall(abi.encodeWithSignature("bonanzaBindings()"));
         require(ok);
         (underlying,,,) = abi.decode(data, (address, address, address, address));
     }
 }
 
-contract FiddyStakeLockTest is FiddyRevenueSetup {
+contract BonanzaStakeLockTest is BonanzaRevenueSetup {
     address internal lp = makeAddr("lp");
 
     function _flashRound() internal returns (uint256 id) {
@@ -107,17 +107,17 @@ contract FiddyStakeLockTest is FiddyRevenueSetup {
     function testFlashConsumerStakeAroundOwnPurchaseRevertsOnLock() public {
         _wrap(1, alice, 100);
         vm.prank(alice);
-        staking.stakeFiddy(1, 100);
+        staking.stakeBonanza(1, 100);
         SameTransactionLender pool = new SameTransactionLender(IERC20(address(diamond)));
         vm.prank(authority);
-        fiddy.setFiddyConsumer(address(pool), true);
+        bonanza.setBonanzaConsumer(address(pool), true);
         positions.mint(lp, 5);
         tokenA.mint(lp, 1_000_000);
         vm.prank(lp);
         tokenA.approve(address(diamond), type(uint256).max);
         _wrap(5, lp, 1_000_000);
         vm.startPrank(lp);
-        fiddy.withdrawFiddy(5, 1_000_000);
+        bonanza.withdrawBonanza(5, 1_000_000);
         IERC20(address(diamond)).transfer(address(pool), 1_000_000);
         vm.stopPrank();
 
@@ -126,22 +126,22 @@ contract FiddyStakeLockTest is FiddyRevenueSetup {
             new SelfRebateStaker(address(diamond), pool, IERC20(address(tokenB)), 7);
         positions.mint(address(attacker), 7);
         tokenB.mint(address(attacker), 10_000);
-        uint256 unlockAt = block.timestamp + LibFiddyStaking.STAKE_LOCK;
-        vm.expectRevert(abi.encodeWithSelector(FiddyErrors.StakeLocked.selector, unlockAt));
+        uint256 unlockAt = block.timestamp + LibBonanzaStaking.STAKE_LOCK;
+        vm.expectRevert(abi.encodeWithSelector(BonanzaErrors.StakeLocked.selector, unlockAt));
         attacker.viaConsumer(id, 9, 1_000_000);
 
         assertEq(IERC20(address(diamond)).balanceOf(address(pool)), 1_000_000);
-        assertEq(fiddyView.fiddyAccount(7).staked, 0);
-        assertEq(fiddyView.fiddyRoundRevenue(id), 10);
+        assertEq(bonanzaView.bonanzaAccount(7).staked, 0);
+        assertEq(bonanzaView.bonanzaRoundRevenue(id), 10);
         assertEq(_earned(1, address(tokenB)), 10);
     }
 
     function testWrapFlashStakeAroundOwnPurchaseRevertsOnLock() public {
         _wrap(1, alice, 100);
         vm.prank(alice);
-        staking.stakeFiddy(1, 100);
+        staking.stakeBonanza(1, 100);
         vm.prank(authority);
-        fiddy.setFiddyConversions(true, true, type(uint128).max);
+        bonanza.setBonanzaConversions(true, true, type(uint128).max);
         SameTransactionLender lender = new SameTransactionLender(IERC20(address(tokenA)));
         tokenA.mint(address(lender), 1_000_000);
         uint256 id = _flashRound();
@@ -149,66 +149,66 @@ contract FiddyStakeLockTest is FiddyRevenueSetup {
             new SelfRebateStaker(address(diamond), lender, IERC20(address(tokenB)), 8);
         positions.mint(address(attacker), 8);
         tokenB.mint(address(attacker), 10_000);
-        (,,,,,, uint256 outstanding) = fiddyView.fiddyReserve();
-        uint256 unlockAt = block.timestamp + LibFiddyStaking.STAKE_LOCK;
-        vm.expectRevert(abi.encodeWithSelector(FiddyErrors.StakeLocked.selector, unlockAt));
+        (,,,,,, uint256 outstanding) = bonanzaView.bonanzaReserve();
+        uint256 unlockAt = block.timestamp + LibBonanzaStaking.STAKE_LOCK;
+        vm.expectRevert(abi.encodeWithSelector(BonanzaErrors.StakeLocked.selector, unlockAt));
         attacker.viaWrap(id, 9, 1_000_000);
 
-        (,,,,,, uint256 outstandingAfter) = fiddyView.fiddyReserve();
+        (,,,,,, uint256 outstandingAfter) = bonanzaView.bonanzaReserve();
         assertEq(outstandingAfter, outstanding);
         assertEq(tokenA.balanceOf(address(lender)), 1_000_000);
-        assertEq(fiddyView.fiddyAccount(8).balance, 0);
+        assertEq(bonanzaView.bonanzaAccount(8).balance, 0);
         assertEq(_earned(1, address(tokenB)), 10);
     }
 
     function testWeightedTopUpOnOldSmallStakeRelocksAlmostFully() public {
         _wrap(1, alice, 1000);
         vm.prank(alice);
-        staking.stakeFiddy(1, 1);
+        staking.stakeBonanza(1, 1);
         uint256 started = block.timestamp;
-        assertEq(fiddyView.fiddyAccount(1).stakeStart, started);
+        assertEq(bonanzaView.bonanzaAccount(1).stakeStart, started);
         vm.warp(started + 30 days);
         vm.prank(alice);
-        staking.stakeFiddy(1, 999);
+        staking.stakeBonanza(1, 999);
         // Credit is capped at the lock: 1 * 24h / 1000 = 86 seconds, rounded down.
-        uint256 unlockAt = block.timestamp - 86 + LibFiddyStaking.STAKE_LOCK;
-        assertEq(fiddyView.fiddyAccount(1).stakeStart, block.timestamp - 86);
+        uint256 unlockAt = block.timestamp - 86 + LibBonanzaStaking.STAKE_LOCK;
+        assertEq(bonanzaView.bonanzaAccount(1).stakeStart, block.timestamp - 86);
         vm.warp(unlockAt - 1);
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(FiddyErrors.StakeLocked.selector, unlockAt));
-        staking.unstakeFiddy(1, 1);
+        vm.expectRevert(abi.encodeWithSelector(BonanzaErrors.StakeLocked.selector, unlockAt));
+        staking.unstakeBonanza(1, 1);
         vm.warp(unlockAt);
         vm.prank(alice);
-        staking.unstakeFiddy(1, 400);
-        assertEq(fiddyView.fiddyAccount(1).stakeStart, unlockAt - LibFiddyStaking.STAKE_LOCK);
+        staking.unstakeBonanza(1, 400);
+        assertEq(bonanzaView.bonanzaAccount(1).stakeStart, unlockAt - LibBonanzaStaking.STAKE_LOCK);
         vm.prank(alice);
-        staking.unstakeFiddy(1, 600);
+        staking.unstakeBonanza(1, 600);
     }
 
     function testHalfServedTopUpKeepsProportionalCreditAndLockFollowsSale() public {
         _wrap(1, alice, 200);
         vm.prank(alice);
-        staking.stakeFiddy(1, 100);
+        staking.stakeBonanza(1, 100);
         vm.warp(block.timestamp + 12 hours);
         vm.prank(alice);
-        staking.stakeFiddy(1, 100);
+        staking.stakeBonanza(1, 100);
         uint256 unlockAt = block.timestamp + 18 hours;
-        assertEq(fiddyView.fiddyAccount(1).stakeStart + LibFiddyStaking.STAKE_LOCK, unlockAt);
+        assertEq(bonanzaView.bonanzaAccount(1).stakeStart + LibBonanzaStaking.STAKE_LOCK, unlockAt);
 
         vm.prank(alice);
         positions.transferFrom(alice, bob, 1);
         vm.warp(unlockAt - 1);
         vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(FiddyErrors.StakeLocked.selector, unlockAt));
-        staking.unstakeFiddy(1, 200);
+        vm.expectRevert(abi.encodeWithSelector(BonanzaErrors.StakeLocked.selector, unlockAt));
+        staking.unstakeBonanza(1, 200);
         vm.warp(unlockAt);
         vm.prank(bob);
-        staking.unstakeFiddy(1, 200);
+        staking.unstakeBonanza(1, 200);
 
         // A fresh stake after a full exit receives no credit for the earlier stake.
         vm.prank(bob);
-        staking.stakeFiddy(1, 50);
-        assertEq(fiddyView.fiddyAccount(1).stakeStart, block.timestamp);
+        staking.stakeBonanza(1, 50);
+        assertEq(bonanzaView.bonanzaAccount(1).stakeStart, block.timestamp);
     }
 
     function testFuzzTopUpLockNeverShortensAndMatchesWeightedCredit(
@@ -222,16 +222,17 @@ contract FiddyStakeLockTest is FiddyRevenueSetup {
         tokenA.mint(alice, prior + amount);
         _wrap(1, alice, prior + amount);
         vm.prank(alice);
-        staking.stakeFiddy(1, prior);
-        uint256 first = fiddyView.fiddyAccount(1).stakeStart;
+        staking.stakeBonanza(1, prior);
+        uint256 first = bonanzaView.bonanzaAccount(1).stakeStart;
         vm.warp(block.timestamp + elapsed);
         vm.prank(alice);
-        staking.stakeFiddy(1, amount);
-        uint256 credit = elapsed < LibFiddyStaking.STAKE_LOCK ? elapsed : LibFiddyStaking.STAKE_LOCK;
-        uint256 start = fiddyView.fiddyAccount(1).stakeStart;
+        staking.stakeBonanza(1, amount);
+        uint256 credit =
+            elapsed < LibBonanzaStaking.STAKE_LOCK ? elapsed : LibBonanzaStaking.STAKE_LOCK;
+        uint256 start = bonanzaView.bonanzaAccount(1).stakeStart;
         assertEq(start, block.timestamp - prior * credit / (prior + amount));
         assertGe(start, first);
-        assertGe(start + LibFiddyStaking.STAKE_LOCK, block.timestamp);
+        assertGe(start + LibBonanzaStaking.STAKE_LOCK, block.timestamp);
     }
 }
 
@@ -241,7 +242,7 @@ interface IStaticsPositionFactory {
 }
 
 /// @notice The same flash routes against the actual pinned Statics artifacts.
-contract FiddyStakeLockActualStaticsTest is FiddyStaticsIntegrationTest {
+contract BonanzaStakeLockActualStaticsTest is BonanzaStaticsIntegrationTest {
     function _attacker(SameTransactionLender lender) internal returns (SelfRebateStaker attacker) {
         address mallory = makeAddr("mallory");
         IStaticsPositionFactory factory = IStaticsPositionFactory(address(core));
@@ -259,7 +260,7 @@ contract FiddyStakeLockActualStaticsTest is FiddyStaticsIntegrationTest {
         router.setAsset(address(tokenB), true, true);
         vm.startPrank(authority);
         uint64 version = governance.createRewardLotteryConfig(
-            _config(address(tokenB), 100, 10, 10, 1 days, 0), FiddyConfig(0, 5000, false)
+            _config(address(tokenB), 100, 10, 10, 1 days, 0), BonanzaConfig(0, 5000, false)
         );
         governance.setLotteryConfigEnabled(version, true);
         vm.stopPrank();
@@ -269,11 +270,11 @@ contract FiddyStakeLockActualStaticsTest is FiddyStaticsIntegrationTest {
 
     function _honestStake() internal {
         vm.prank(authority);
-        fiddy.setFiddyConversions(true, true, type(uint128).max);
+        bonanza.setBonanzaConversions(true, true, type(uint128).max);
         vm.startPrank(alice);
         statics.approve(address(diamond), type(uint256).max);
-        fiddy.wrapFiddy(positionId, 100 ether);
-        staking.stakeFiddy(positionId, 100 ether);
+        bonanza.wrapBonanza(positionId, 100 ether);
+        staking.stakeBonanza(positionId, 100 ether);
         vm.stopPrank();
     }
 
@@ -283,11 +284,11 @@ contract FiddyStakeLockActualStaticsTest is FiddyStaticsIntegrationTest {
         SameTransactionLender lender = new SameTransactionLender(statics);
         deal(address(statics), address(lender), 1_000_000 ether);
         SelfRebateStaker attacker = _attacker(lender);
-        uint256 unlockAt = block.timestamp + LibFiddyStaking.STAKE_LOCK;
-        vm.expectRevert(abi.encodeWithSelector(FiddyErrors.StakeLocked.selector, unlockAt));
+        uint256 unlockAt = block.timestamp + LibBonanzaStaking.STAKE_LOCK;
+        vm.expectRevert(abi.encodeWithSelector(BonanzaErrors.StakeLocked.selector, unlockAt));
         attacker.viaWrap(id, 9, 1_000_000 ether);
         assertEq(statics.balanceOf(address(lender)), 1_000_000 ether);
-        (uint256 honest,) = staking.indexedFiddyRevenue(positionId, address(tokenB));
+        (uint256 honest,) = staking.indexedBonanzaRevenue(positionId, address(tokenB));
         assertEq(honest, 10);
     }
 
@@ -296,18 +297,18 @@ contract FiddyStakeLockActualStaticsTest is FiddyStaticsIntegrationTest {
         uint256 id = _round();
         SameTransactionLender pool = new SameTransactionLender(IERC20(address(diamond)));
         vm.prank(authority);
-        fiddy.setFiddyConsumer(address(pool), true);
+        bonanza.setBonanzaConsumer(address(pool), true);
         vm.startPrank(alice);
-        fiddy.wrapFiddy(positionId, 50 ether);
-        fiddy.withdrawFiddy(positionId, 50 ether);
+        bonanza.wrapBonanza(positionId, 50 ether);
+        bonanza.withdrawBonanza(positionId, 50 ether);
         IERC20(address(diamond)).transfer(address(pool), 50 ether);
         vm.stopPrank();
         SelfRebateStaker attacker = _attacker(pool);
-        uint256 unlockAt = block.timestamp + LibFiddyStaking.STAKE_LOCK;
-        vm.expectRevert(abi.encodeWithSelector(FiddyErrors.StakeLocked.selector, unlockAt));
+        uint256 unlockAt = block.timestamp + LibBonanzaStaking.STAKE_LOCK;
+        vm.expectRevert(abi.encodeWithSelector(BonanzaErrors.StakeLocked.selector, unlockAt));
         attacker.viaConsumer(id, 9, 50 ether);
         assertEq(IERC20(address(diamond)).balanceOf(address(pool)), 50 ether);
-        (uint256 honest,) = staking.indexedFiddyRevenue(positionId, address(tokenB));
+        (uint256 honest,) = staking.indexedBonanzaRevenue(positionId, address(tokenB));
         assertEq(honest, 10);
     }
 }

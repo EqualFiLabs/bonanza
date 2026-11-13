@@ -1,6 +1,6 @@
 # Payment Token Accounting
 
-Statics Lottery accounts independently in each Round's ERC-20 Payment Token. It does not normalize
+Bonanza accounts independently in each Round's ERC-20 Payment Token. It does not normalize
 decimals, quote values in USD, swap assets, or privilege WETH. Every ticket price, claim, fee, and
 surplus amount is expressed in the selected token's base units.
 
@@ -47,9 +47,9 @@ accounted(asset) =
   + finalizerLiability
   + pendingOperatorRevenueTotal
   + treasuryAvailable
-  + fiddyRevenueReserved(asset)
-  + (asset == STATICS ? fiddyBacking : 0)
-  + (asset == Diamond ? fiddyInventory + fiddyAccountCustody : 0)
+  + bonanzaRevenueReserved(asset)
+  + (asset == STATICS ? bonanzaBacking : 0)
+  + (asset == Diamond ? bonanzaInventory + bonanzaAccountCustody : 0)
 ```
 
 For a compatible canonical token, the solvency condition is:
@@ -72,12 +72,12 @@ amount = ticketPrice * q
 Before calling the token, the transaction records:
 
 ```text
-share = floor(amount * (10000 - winnerBps) * stakerProtocolBps / 100000000)  // 0 without FIDDY rewards
+share = floor(amount * (10000 - winnerBps) * stakerProtocolBps / 100000000)  // 0 without BONANZA rewards
 round.soldTickets                  += q
 round.receipts                     += amount
 stakerAccrued[round]               += share
 assetAccounting[token].activeRoundEscrow += amount - share
-fiddyRevenueReserved(token)        += share   // or treasuryAvailable += share at zero stake weight
+bonanzaRevenueReserved(token)        += share   // or treasuryAvailable += share at zero stake weight
 ```
 
 The staker share is final at purchase because tickets are never refunded. Escrow therefore holds
@@ -115,7 +115,7 @@ Diamond upgrades. Historical deployment manifests retain their original settings
 winner       = floor(gross * winnerBps / D)
 protocol     = gross - winner
 operator     = floor(protocol * operatorProtocolBps / D)
-staker       = stakerAccrued[round]   // sum of per-purchase shares; 0 without FIDDY rewards
+staker       = stakerAccrued[round]   // sum of per-purchase shares; 0 without BONANZA rewards
 recipient    = floor(gross * recipientBps / D)
 treasuryGross = protocol - operator - staker - recipient
 finalizer    = min(finalizerTip, treasuryGross)
@@ -241,18 +241,18 @@ generated proof results are retained privately.
 
 The historical lifecycle and original proof report do not establish the deadline-draw candidate. New live testnet execution remains pending; candidate formal evidence is recorded separately.
 
-## FIDDY accounting
+## BONANZA accounting
 
-FIDDY supply equals allocated STATICS backing, including preminted reward inventory.
-Prefunding pulls exact STATICS, allocates backing and mints matching FIDDY into inventory.
-Participation moves existing FIDDY from inventory to account custody without changing supply
+BONANZA supply equals allocated STATICS backing, including preminted reward inventory.
+Prefunding pulls exact STATICS, allocates backing and mints matching BONANZA into inventory.
+Participation moves existing BONANZA from inventory to account custody without changing supply
 or backing. Inventory is a subset of supply, not additional STATICS liability. Public
 wrap moves exact STATICS into backing and creates account custody; unwrap burns unstaked account
-FIDDY and releases exact STATICS. External transfers change neither backing nor supply. Total
-account balances (including stake) equal `fiddyAccountCustody`; stake is not counted a second time.
+BONANZA and releases exact STATICS. External transfers change neither backing nor supply. Total
+account balances (including stake) equal `bonanzaAccountCustody`; stake is not counted a second time.
 
 Staker revenue is booked at purchase. With positive total weight the share is added to
-`fiddyRevenueReserved(asset)` and to the asset's index; with zero weight it goes to Treasury.
+`bonanzaRevenueReserved(asset)` and to the asset's index; with zero weight it goes to Treasury.
 Escrow and reserved revenue therefore both change at purchase, and settlement releases only
 `receipts - stakerAccrued` from escrow. Claims reduce reserved. Whole units of index division
 dust reduce reserved and increase Treasury. A forfeited boost excess moves between accounts
@@ -273,18 +273,18 @@ protocol remainder. The staker amount is the sum of per-purchase floors, which n
 protocol remainder less the Operator amount. The Recipient receives a floored fraction of gross
 receipts. Treasury receives the rest after Recipient revenue and the capped finalizer tip.
 The combined configuration bound reserves room for all three allocations. Configurations without
-FIDDY rewards have zero staker share.
+BONANZA rewards have zero staker share.
 
-For a FIDDY payment round, ticket escrow and all claims move existing supply; reward inventory,
-account custody and reserved FIDDY revenue are counted alongside ordinary Lottery liabilities.
-FIDDY payouts go only to the caller, the Treasury recipient, or the snapshotted Round Recipient
+For a BONANZA payment round, ticket escrow and all claims move existing supply; reward inventory,
+account custody and reserved BONANZA revenue are counted alongside ordinary Lottery liabilities.
+BONANZA payouts go only to the caller, the Treasury recipient, or the snapshotted Round Recipient
 through its dedicated payout path. STATICS liabilities count
 allocated backing once, without adding inventory again. Exact Router funding uses a single-use
-protocol movement and clears its allowance, and requires the Router to be an approved FIDDY
+protocol movement and clears its allowance, and requires the Router to be an approved BONANZA
 consumer so it can pay Operators. Approved consumer status never permits raw transfers into
 protocol custody or redemption.
 
-Historical formal reports do not cover FIDDY. Current evidence consists of focused tests, stateful
+Historical formal reports do not cover BONANZA. Current evidence consists of focused tests, stateful
 conservation, actual-candidate integration, and separately reported fork qualification.
 
 
@@ -309,8 +309,8 @@ cannot redirect or double-pay a claim. The recipient itself may instead call
 chooses, also while paused. This recovers an allocation the fixed address can no longer receive,
 such as after an issuer freeze. No other account, including governance, can pick the receiver.
 Exact-transfer failures revert atomically. Winner,
-Treasury, finalizer and Operator payouts remain independent. FIDDY uses a fixed-recipient protocol
-exit; the receiver's ordinary transfers remain restricted. A recipient-directed FIDDY claim pays
+Treasury, finalizer and Operator payouts remain independent. BONANZA uses a fixed-recipient protocol
+exit; the receiver's ordinary transfers remain restricted. A recipient-directed BONANZA claim pays
 only the recipient itself or the Treasury recipient. Recipient liabilities are excluded
 from absorbable surplus. This release requires fresh deployment; historical validators retain
 their deployment-specific tuple layouts.

@@ -8,8 +8,8 @@ result is needed to run this suite.
 ## Clone and prerequisites
 
 ```bash
-git clone --recurse-submodules https://github.com/EqualFiLabs/fiddy.git
-cd fiddy
+git clone --recurse-submodules https://github.com/EqualFiLabs/bonanza.git
+cd bonanza
 git submodule update --init --recursive
 ```
 

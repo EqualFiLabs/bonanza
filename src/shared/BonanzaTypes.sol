@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.30;
 
-struct FiddyBindings {
+struct BonanzaBindings {
     address underlying;
     address positionNFT;
     address operators;
     address registry;
 }
 
-struct FiddyConfig {
+struct BonanzaConfig {
     uint96 unitsPerTicket;
     uint16 stakerProtocolBps;
     bool participation;
 }
 
-struct FiddyAccount {
+struct BonanzaAccount {
     uint256 balance;
     uint256 staked;
     uint256 weight;
@@ -26,14 +26,14 @@ struct FiddyAccount {
     bool attached;
 }
 
-struct FiddyAsset {
+struct BonanzaAsset {
     uint256 indexRay;
     uint256 reserved;
     uint256 dustRay;
     bool listed;
 }
 
-struct FiddyCredit {
+struct BonanzaCredit {
     uint256 paidIndex;
     uint256 claimable;
     uint256 remainderRay;

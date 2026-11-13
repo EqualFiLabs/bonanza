@@ -317,43 +317,43 @@ class Rehearsal:
         return round_id
 
     def financial_state(self):
-        accounts = [self.call(self.lottery.functions.fiddyAccount(i)) for i in self.positions]
-        credits = [[self.call(self.lottery.functions.fiddyCredit(i, asset)) for asset in self.assets] for i in self.positions]
-        return plain({"reserve": self.call(self.lottery.functions.fiddyReserve()),
+        accounts = [self.call(self.lottery.functions.bonanzaAccount(i)) for i in self.positions]
+        credits = [[self.call(self.lottery.functions.bonanzaCredit(i, asset)) for asset in self.assets] for i in self.positions]
+        return plain({"reserve": self.call(self.lottery.functions.bonanzaReserve()),
             "roundCount": self.call(self.lottery.functions.latestRoundId()),
             "activeRounds": self.call(self.lottery.functions.activeRoundCount()),
             "configVersion": self.call(self.lottery.functions.latestLotteryConfigVersion()),
             "accounts": accounts, "credits": credits,
             "assets": [[self.call(self.lottery.functions.assetAccounting(asset)),
-                        self.call(self.lottery.functions.fiddyAsset(asset))] for asset in self.assets],
+                        self.call(self.lottery.functions.bonanzaAsset(asset))] for asset in self.assets],
             "rounds": [self.call(self.lottery.functions.round(i)) for i in self.rounds],
             "balances": [[self.call(self.token(asset).functions.balanceOf(holder)) for holder in
                            [self.lottery.address, self.alice, self.bob, self.carol, self.treasury, self.router.address, self.borrower.address]]
                           for asset in self.assets]})
 
     def token(self, address):
-        return self.w3.eth.contract(address=Web3.to_checksum_address(address), abi=self.artifact("FiddyTokenFacet")["abi"])
+        return self.w3.eth.contract(address=Web3.to_checksum_address(address), abi=self.artifact("BonanzaTokenFacet")["abi"])
 
     def reconcile(self):
-        reserve = self.call(self.lottery.functions.fiddyReserve())
+        reserve = self.call(self.lottery.functions.bonanzaReserve())
         inventory, backing, custody = reserve[:3]
         require(self.call(self.lottery.functions.totalSupply()) == backing, "Backing/supply mismatch")
         require(self.call(self.lottery.functions.balanceOf(self.lottery.address)) == inventory + custody +
                 sum(self.call(self.lottery.functions.assetAccounting(self.lottery.address))) +
-                self.call(self.lottery.functions.fiddyAsset(self.lottery.address))[1], "FIDDY custody mismatch")
-        accounts = [self.call(self.lottery.functions.fiddyAccount(i)) for i in self.positions]
+                self.call(self.lottery.functions.bonanzaAsset(self.lottery.address))[1], "BONANZA custody mismatch")
+        accounts = [self.call(self.lottery.functions.bonanzaAccount(i)) for i in self.positions]
         require(custody == sum(a[0] for a in accounts), "Account custody sum mismatch")
-        require(self.call(self.lottery.functions.fiddyStaking())[0] == sum(a[2] for a in accounts), "Weight sum mismatch")
+        require(self.call(self.lottery.functions.bonanzaStaking())[0] == sum(a[2] for a in accounts), "Weight sum mismatch")
         require(all(a[1] <= a[0] for a in accounts), "Stake exceeds balance")
         for asset in self.assets:
             accounting = self.call(self.lottery.functions.assetAccounting(asset))
-            book = self.call(self.lottery.functions.fiddyAsset(asset))
+            book = self.call(self.lottery.functions.bonanzaAsset(asset))
             extra = backing if asset == self.underlying else (inventory + custody if asset == self.lottery.address else 0)
             require(self.call(self.token(asset).functions.balanceOf(self.lottery.address)) == sum(accounting) + book[1] + extra,
                     f"Asset liabilities/custody mismatch: {asset}")
             scaled = book[2]
             for i, a in zip(self.positions, accounts):
-                c = self.call(self.lottery.functions.fiddyCredit(i, asset))
+                c = self.call(self.lottery.functions.bonanzaCredit(i, asset))
                 scaled += c[1] * RAY + c[2] + a[2] * (book[0] - c[0])
             require(scaled == book[1] * RAY, "Scaled entitlement mismatch")
         write(self.run / f"reconciliation-{self.scenario}.json", self.financial_state())

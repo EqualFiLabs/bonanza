@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.30;
 
-import { FiddyConfig } from "../shared/FiddyTypes.sol";
+import { BonanzaConfig } from "../shared/BonanzaTypes.sol";
 
 import { IntegrationConfig, LotteryConfig } from "../shared/Types.sol";
 
@@ -9,7 +9,7 @@ interface IGovernance {
     event LotteryConfigCreated(
         uint64 indexed version, address indexed paymentToken, LotteryConfig config
     );
-    event FiddyConfigCreated(uint64 indexed version, FiddyConfig config);
+    event BonanzaConfigCreated(uint64 indexed version, BonanzaConfig config);
     event LotteryConfigEnabled(uint64 indexed version, bool enabled);
     event MaxActiveRoundsUpdated(uint16 previousLimit, uint16 newLimit);
     event IntegrationConfigUpdated(
@@ -21,9 +21,10 @@ interface IGovernance {
     event ProtocolFinalized();
 
     function createLotteryConfig(LotteryConfig calldata config) external returns (uint64 version);
-    function createRewardLotteryConfig(LotteryConfig calldata config, FiddyConfig calldata rewards)
-        external
-        returns (uint64 version);
+    function createRewardLotteryConfig(
+        LotteryConfig calldata config,
+        BonanzaConfig calldata rewards
+    ) external returns (uint64 version);
     function setLotteryConfigEnabled(uint64 version, bool enabled) external;
     function setMaxActiveRounds(uint16 maxActiveRounds) external;
     function integrationConfig()

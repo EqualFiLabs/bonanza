@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.30;
 
-import { FiddyConfig, FiddyAccount, FiddyAsset, FiddyCredit } from "../shared/FiddyTypes.sol";
+import {
+    BonanzaConfig,
+    BonanzaAccount,
+    BonanzaAsset,
+    BonanzaCredit
+} from "../shared/BonanzaTypes.sol";
 
-library LibFiddyStorage {
+library LibBonanzaStorage {
     bytes32 internal constant SLOT = keccak256("statics.lottery.storage.fiddy.v1");
 
     struct State {
@@ -16,17 +21,17 @@ library LibFiddyStorage {
         bool boostsEnabled;
         uint256 wrapCap;
         uint256 wrapOutstanding;
-        uint256 inventory; // Preminted FIDDY available for participation rewards.
+        uint256 inventory; // Preminted BONANZA available for participation rewards.
         uint256 allocatedBacking; // STATICS backing all supply, including inventory.
         uint256 custodyTotal;
         uint256 totalWeight;
         mapping(address => bool) consumers;
-        mapping(uint64 => FiddyConfig) configs;
-        mapping(uint256 => FiddyConfig) rounds;
-        mapping(uint256 => FiddyAccount) accounts;
+        mapping(uint64 => BonanzaConfig) configs;
+        mapping(uint256 => BonanzaConfig) rounds;
+        mapping(uint256 => BonanzaAccount) accounts;
         mapping(uint256 => uint256) operatorAccount;
-        mapping(address => FiddyAsset) assets;
-        mapping(uint256 => mapping(address => FiddyCredit)) credits;
+        mapping(address => BonanzaAsset) assets;
+        mapping(uint256 => mapping(address => BonanzaCredit)) credits;
         mapping(uint256 => uint256) stakerAccrued; // Staker revenue booked per round.
         address[] revenueAssets;
     }

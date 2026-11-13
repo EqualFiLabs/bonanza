@@ -1,4 +1,4 @@
-# Statics Lottery formal targets
+# Bonanza formal targets
 
 > Historical verification scope: these models describe earlier candidates. The current
 > optional-recipient ABI and allocations have no formal proof result. Obsolete Halmos

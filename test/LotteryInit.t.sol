@@ -177,7 +177,7 @@ contract LotteryInitTest is Test {
         _initialize(params);
     }
 
-    function test_RejectsFiddyPricedOperatorShareWithoutConsumerRouter() public {
+    function test_RejectsBonanzaPricedOperatorShareWithoutConsumerRouter() public {
         LotteryInit.InitParams memory params = _validParams();
         params.lotteryConfigs[1].paymentToken = address(diamond);
         bytes memory reason = abi.encodeWithSelector(

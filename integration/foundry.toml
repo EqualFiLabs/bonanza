@@ -21,7 +21,8 @@ auto_detect_solc = true
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
-bytecode_hash = "none"
+bytecode_hash = "ipfs"
+cbor_metadata = true
 [fmt]
 line_length = 120
 tab_width = 4

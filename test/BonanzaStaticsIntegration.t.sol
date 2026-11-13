@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.30;
 
-import { FiddySetup } from "./utils/FiddySetup.sol";
+import { BonanzaSetup } from "./utils/BonanzaSetup.sol";
 import { IERC721 } from "openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 import { IERC165 } from "openzeppelin-contracts/contracts/utils/introspection/IERC165.sol";
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import { IStaticsExternalModules } from "../src/interfaces/IStaticsExternalModules.sol";
 import { IDiamondLoupe } from "../src/interfaces/IDiamondLoupe.sol";
-import { FiddyConfig } from "../src/shared/FiddyTypes.sol";
+import { BonanzaConfig } from "../src/shared/BonanzaTypes.sol";
 import { Round } from "../src/shared/Types.sol";
-import { FiddyErrors } from "../src/shared/FiddyErrors.sol";
-import { IFiddyActivation } from "../src/interfaces/IFiddyProtocol.sol";
+import { BonanzaErrors } from "../src/shared/BonanzaErrors.sol";
+import { IBonanzaActivation } from "../src/interfaces/IBonanzaProtocol.sol";
 
 interface IStaticsCandidate {
     function create() external returns (address, address, address, address, uint256);
@@ -27,8 +27,8 @@ interface IPositionClosure {
     function closePosition(uint256 id) external;
 }
 
-/// @notice Executes actual 0.8.33 Statics artifacts against the 0.8.30 Fiddy candidate.
-contract FiddyStaticsIntegrationTest is FiddySetup {
+/// @notice Executes actual 0.8.33 Statics artifacts against the 0.8.30 Bonanza candidate.
+contract BonanzaStaticsIntegrationTest is BonanzaSetup {
     IStaticsCandidate internal candidate;
     IStaticsExternalModules internal core;
     IERC721 internal actualOperators;
@@ -36,7 +36,7 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
     uint256 internal positionId;
     address internal activation;
 
-    function _initializeFiddy() internal override {
+    function _initializeBonanza() internal override {
         candidate = IStaticsCandidate(
             vm.deployCode("out-statics/StaticsCandidate.sol/StaticsCandidate.json")
         );
@@ -49,7 +49,7 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         positionId = id;
         candidate.approveModule(address(diamond));
         vm.prank(authority);
-        fiddy.initializeFiddy(underlying, position, ops, registry_);
+        bonanza.initializeBonanza(underlying, position, ops, registry_);
     }
 
     function testActualCandidateSupportsOnlyReducedExternalInterface() public view {
@@ -71,34 +71,34 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
 
     function testActualCandidateAttachmentRollbackAndDisabledCleanup() public {
         vm.prank(authority);
-        fiddy.setFiddyConversions(true, false, 100 ether);
+        bonanza.setBonanzaConversions(true, false, 100 ether);
         candidate.setModuleEnabled(address(diamond), false);
         uint256 beforeBalance = statics.balanceOf(alice);
         vm.startPrank(alice);
         statics.approve(address(diamond), 100 ether);
         vm.expectRevert();
-        fiddy.wrapFiddy(positionId, 100 ether);
+        bonanza.wrapBonanza(positionId, 100 ether);
         vm.stopPrank();
         assertEq(statics.balanceOf(alice), beforeBalance);
         assertEq(statics.balanceOf(address(diamond)), 0);
-        assertEq(fiddy.totalSupply(), 0);
-        assertEq(fiddyView.fiddyAccount(positionId).balance, 0);
-        assertFalse(fiddyView.fiddyAccount(positionId).attached);
+        assertEq(bonanza.totalSupply(), 0);
+        assertEq(bonanzaView.bonanzaAccount(positionId).balance, 0);
+        assertFalse(bonanzaView.bonanzaAccount(positionId).attached);
         assertEq(core.externalLegCount(positionId), 0);
         candidate.setModuleEnabled(address(diamond), true);
         vm.startPrank(alice);
-        fiddy.wrapFiddy(positionId, 100 ether);
+        bonanza.wrapBonanza(positionId, 100 ether);
         IERC721(address(core)).approve(bob, positionId);
         vm.stopPrank();
         vm.prank(bob);
-        vm.expectRevert(FiddyErrors.NotPositionOwner.selector);
-        fiddy.withdrawFiddy(positionId, 1);
+        vm.expectRevert(BonanzaErrors.NotPositionOwner.selector);
+        bonanza.withdrawBonanza(positionId, 1);
         candidate.setModuleEnabled(address(diamond), false);
         vm.startPrank(alice);
         vm.expectRevert();
         IPositionClosure(address(core)).closePosition(positionId);
-        fiddy.withdrawFiddy(positionId, 100 ether);
-        staking.cleanupFiddyAccount(positionId);
+        bonanza.withdrawBonanza(positionId, 100 ether);
+        staking.cleanupBonanzaAccount(positionId);
         assertEq(core.externalLegCount(positionId), 0);
         IPositionClosure(address(core)).closePosition(positionId);
         vm.stopPrank();
@@ -106,29 +106,29 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
 
     function testActualCandidateLifecycleBoostResetAndPositionSale() public {
         vm.prank(authority);
-        fiddy.setFiddyConversions(true, false, 100 ether);
+        bonanza.setBonanzaConversions(true, false, 100 ether);
         vm.startPrank(alice);
         statics.approve(address(diamond), 100 ether);
-        fiddy.wrapFiddy(positionId, 100 ether);
+        bonanza.wrapBonanza(positionId, 100 ether);
         vm.stopPrank();
         assertEq(core.externalLegCount(positionId), 1);
         vm.prank(authority);
-        staking.setFiddyBoostsEnabled(true);
+        staking.setBonanzaBoostsEnabled(true);
         vm.prank(alice);
-        staking.stakeFiddy(positionId, 100 ether);
+        staking.stakeBonanza(positionId, 100 ether);
         vm.prank(alice);
-        staking.registerFiddyOperator(positionId, 1);
-        assertEq(fiddyView.fiddyAccount(positionId).weight, 125 ether);
+        staking.registerBonanzaOperator(positionId, 1);
+        assertEq(bonanzaView.bonanzaAccount(positionId).weight, 125 ether);
         vm.prank(alice);
         IGenesisLinks(address(core)).linkGenesis(positionId, 1);
-        assertEq(fiddyView.fiddyAccount(positionId).weight, 125 ether);
+        assertEq(bonanzaView.bonanzaAccount(positionId).weight, 125 ether);
         vm.prank(alice);
         IGenesisLinks(address(core)).unlinkGenesis(positionId, 1);
-        assertEq(fiddyView.fiddyAccount(positionId).weight, 125 ether);
+        assertEq(bonanzaView.bonanzaAccount(positionId).weight, 125 ether);
         vm.prank(alice);
         statics.approve(address(diamond), type(uint256).max);
         vm.prank(alice);
-        fiddy.fundFiddyReserve(2 ether);
+        bonanza.fundBonanzaReserve(2 ether);
         uint256 soldOut = _fundedRound(address(tokenB), false);
         uint256 deadline = _fundedRound(address(statics), true);
         // An actual Genesis round trip resets the activation tier, so the boost is forfeited even
@@ -137,28 +137,28 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         actualOperators.transferFrom(alice, bob, 1);
         vm.prank(bob);
         actualOperators.transferFrom(bob, alice, 1);
-        assertEq(IFiddyActivation(activation).multiplierBps(1), 10_000);
+        assertEq(IBonanzaActivation(activation).multiplierBps(1), 10_000);
         uint256 treasuryB = stateView.assetAccounting(address(tokenB)).treasuryAvailable;
-        staking.checkpointFiddyAccount(positionId);
-        assertFalse(fiddyView.fiddyAccount(positionId).registered);
-        assertEq(fiddyView.fiddyAccount(positionId).weight, 100 ether);
-        assertEq(fiddyView.fiddyOperatorAccount(1), 0);
-        assertEq(fiddyView.fiddyCredit(positionId, address(tokenB)).claimable, 80);
-        assertEq(fiddyView.fiddyCredit(positionId, address(statics)).claimable, 40);
+        staking.checkpointBonanzaAccount(positionId);
+        assertFalse(bonanzaView.bonanzaAccount(positionId).registered);
+        assertEq(bonanzaView.bonanzaAccount(positionId).weight, 100 ether);
+        assertEq(bonanzaView.bonanzaOperatorAccount(1), 0);
+        assertEq(bonanzaView.bonanzaCredit(positionId, address(tokenB)).claimable, 80);
+        assertEq(bonanzaView.bonanzaCredit(positionId, address(statics)).claimable, 40);
         assertEq(stateView.assetAccounting(address(tokenB)).treasuryAvailable, treasuryB + 20);
         vm.prank(alice);
         IERC721(address(core)).transferFrom(alice, bob, positionId);
         vm.prank(alice);
-        vm.expectRevert(FiddyErrors.NotPositionOwner.selector);
-        fiddy.withdrawFiddy(positionId, 1);
+        vm.expectRevert(BonanzaErrors.NotPositionOwner.selector);
+        bonanza.withdrawBonanza(positionId, 1);
         vm.prank(bob);
-        staking.unstakeFiddy(positionId, 100 ether);
+        staking.unstakeBonanza(positionId, 100 ether);
         vm.prank(bob);
-        assertEq(staking.claimFiddyRevenue(positionId, address(tokenB), bob), 80);
+        assertEq(staking.claimBonanzaRevenue(positionId, address(tokenB), bob), 80);
         vm.prank(bob);
-        assertEq(staking.claimFiddyRevenue(positionId, address(statics), bob), 40);
+        assertEq(staking.claimBonanzaRevenue(positionId, address(statics), bob), 40);
         vm.prank(bob);
-        fiddy.withdrawFiddy(positionId, 102 ether);
+        bonanza.withdrawBonanza(positionId, 102 ether);
         Round memory round = stateView.round(soldOut);
         vm.prank(round.winner);
         claims.claimWinner(soldOut, round.winner);
@@ -166,7 +166,7 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         vm.prank(round.winner);
         claims.claimWinner(deadline, round.winner);
         vm.prank(bob);
-        staking.cleanupFiddyAccount(positionId);
+        staking.cleanupBonanzaAccount(positionId);
         assertEq(core.externalLegCount(positionId), 0);
         vm.prank(bob);
         IPositionClosure(address(core)).closePosition(positionId);
@@ -176,7 +176,7 @@ contract FiddyStaticsIntegrationTest is FiddySetup {
         router.setAsset(asset, true, true);
         vm.startPrank(authority);
         uint64 version = governance.createRewardLotteryConfig(
-            _config(asset, 100, 10, 10, 1 days, 0), FiddyConfig(1 ether, 5000, true)
+            _config(asset, 100, 10, 10, 1 days, 0), BonanzaConfig(1 ether, 5000, true)
         );
         governance.setLotteryConfigEnabled(version, true);
         vm.stopPrank();

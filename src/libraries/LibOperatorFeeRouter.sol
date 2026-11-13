@@ -5,8 +5,8 @@ import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol"
 import { SafeERC20 } from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import { IOperatorFeeRouter } from "../interfaces/IOperatorFeeRouter.sol";
-import { LibFiddyMovement } from "./LibFiddyMovement.sol";
-import { LibFiddyStorage } from "./LibFiddyStorage.sol";
+import { LibBonanzaMovement } from "./LibBonanzaMovement.sol";
+import { LibBonanzaStorage } from "./LibBonanzaStorage.sol";
 import { Errors } from "../shared/Errors.sol";
 
 library LibOperatorFeeRouter {
@@ -23,10 +23,10 @@ library LibOperatorFeeRouter {
         }
     }
 
-    /// @dev FIDDY transfers are restricted, so a Router that is not an approved FIDDY consumer
-    /// could accept FIDDY but never pay it to Operators. Funding then waits, retryable, here.
+    /// @dev BONANZA transfers are restricted, so a Router that is not an approved BONANZA consumer
+    /// could accept BONANZA but never pay it to Operators. Funding then waits, retryable, here.
     function enforcePayable(address router, address asset) internal view {
-        if (asset == address(this) && !LibFiddyStorage.state().consumers[router]) {
+        if (asset == address(this) && !LibBonanzaStorage.state().consumers[router]) {
             revert Errors.OperatorRouterUnavailable(router, asset);
         }
     }
@@ -38,9 +38,9 @@ library LibOperatorFeeRouter {
         uint256 receiverBefore = token.balanceOf(router);
 
         token.forceApprove(router, amount);
-        if (asset == address(this)) LibFiddyMovement.authorize(address(this), router, amount);
+        if (asset == address(this)) LibBonanzaMovement.authorize(address(this), router, amount);
         IOperatorFeeRouter(router).addRewards(asset, amount);
-        if (asset == address(this)) LibFiddyMovement.clear();
+        if (asset == address(this)) LibBonanzaMovement.clear();
         token.forceApprove(router, 0);
 
         uint256 senderAfter = token.balanceOf(address(this));

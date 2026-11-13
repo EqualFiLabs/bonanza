@@ -1,6 +1,6 @@
-# Statics Lottery Architecture
+# Bonanza Architecture
 
-Statics Lottery is a standalone ERC-20 lottery implemented behind one
+Bonanza is a standalone ERC-20 lottery implemented behind one
 `StaticsLotteryDiamond` address. Governance creates immutable Round Configuration Versions, and
 the first paid ticket purchase opens a Round by snapshotting one version and the current
 integration version. Multiple Rounds may be active concurrently, including Rounds whose Payment
@@ -51,9 +51,9 @@ storage and delegates to the selected facet. The initial production surface cont
 | `ClaimsFacet` | Pull-based winner and finalizer claims |
 | `RevenueFacet` | Retryable Operator/Treasury delivery and canonical-token surplus handling |
 | `LotteryViewFacet` | Round, configuration, ticket-range, and accounting reads |
-| `FiddyTokenFacet` | Backed FIDDY, consumer permissions and PositionNFT custody movements |
-| `FiddyStakingFacet` | Locked stake, boost registration and validation, complete checkpoints and claims |
-| `FiddyViewFacet` | Reserves, accounts, indexed credits, registrations, round staker revenue and revenue assets |
+| `BonanzaTokenFacet` | Backed BONANZA, consumer permissions and PositionNFT custody movements |
+| `BonanzaStakingFacet` | Locked stake, boost registration and validation, complete checkpoints and claims |
+| `BonanzaViewFacet` | Reserves, accounts, indexed credits, registrations, round staker revenue and revenue assets |
 
 No facet owns an independent balance or proxy. Delegatecalls operate on explicitly namespaced
 Diamond storage.
@@ -69,7 +69,7 @@ The implementation uses stable `keccak256` namespace slots rather than a shared 
 | `statics.lottery.storage.integration.v1` | append-only Registry/Router versions |
 | `statics.lottery.storage.accounting.v1` | per-token liabilities, versioned Operator buckets, finalizer credits, admitted tokens |
 | `statics.lottery.storage.governance.v1` | guardian, Treasury recipient, pause state |
-| `statics.lottery.storage.fiddy.v1` | FIDDY extensions, reserves, accounts, registrations, revenue indexes and per-round staker revenue |
+| `statics.lottery.storage.bonanza.v1` | BONANZA extensions, reserves, accounts, registrations, revenue indexes and per-round staker revenue |
 | OpenZeppelin ERC-7201 ERC20 namespace | ERC-20 balances, allowances and supply |
 | `statics.lottery.storage.reentrancy.v1` | Diamond-wide value-path reentrancy state |
 
@@ -132,7 +132,7 @@ finalization and optional external governance renunciation.
 
 drand removes application-level entropy selection by buyers, proof submitters, finalizers, and
 ordinary configuration governance. It does not provide transaction inclusion or L2 timestamp
-freshness. Statics Lottery assumes Robinhood Chain supplies canonical ordering, state availability,
+freshness. Bonanza assumes Robinhood Chain supplies canonical ordering, state availability,
 and eventual inclusion according to its rules.
 
 A sequencer that deliberately withholds or reorders the final purchase, or holds permitted L2 time
@@ -160,4 +160,4 @@ The disposable Robinhood Testnet release preserves the single-address architectu
 Those addresses and roles are a bounded test rehearsal. They are not a production governance or
 deployment recommendation.
 
-The [FIDDY extension](fiddy-rewards.md) consumes generic Statics PositionNFT external legs and `ownerOf`; it does not read Statics NFT transfer history. Staker revenue is booked at each ticket purchase. FIDDY custody and revenue accounting stay inside the Lottery; this does not move Router allocations into FIDDY staking.
+The [BONANZA extension](bonanza-rewards.md) consumes generic Statics PositionNFT external legs and `ownerOf`; it does not read Statics NFT transfer history. Staker revenue is booked at each ticket purchase. BONANZA custody and revenue accounting stay inside the Lottery; this does not move Router allocations into BONANZA staking.
