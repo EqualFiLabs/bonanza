@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.30;
 
-library FiddyErrors {
+library BonanzaErrors {
     error NotPositionOwner();
     error InvalidBinding();
     error AlreadyInitialized();
@@ -10,7 +10,7 @@ library FiddyErrors {
     error TransferRestricted();
     error ConversionDisabled();
     error WrapCapacityExceeded();
-    error InsufficientFiddy();
+    error InsufficientBonanza();
     error InvalidRewardsConfig();
     error PositionRequired();
     error InvalidRegistration();

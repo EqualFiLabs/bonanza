@@ -11,14 +11,14 @@ import {
 } from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { DeployLottery } from "../script/DeployLottery.s.sol";
-import { FiddyTokenFacet } from "../src/facets/FiddyTokenFacet.sol";
-import { FiddyViewFacet } from "../src/facets/FiddyViewFacet.sol";
+import { BonanzaTokenFacet } from "../src/facets/BonanzaTokenFacet.sol";
+import { BonanzaViewFacet } from "../src/facets/BonanzaViewFacet.sol";
 import { IGovernance } from "../src/interfaces/IGovernance.sol";
-import { LibFiddy } from "../src/libraries/LibFiddy.sol";
+import { LibBonanza } from "../src/libraries/LibBonanza.sol";
 import { Errors } from "../src/shared/Errors.sol";
-import { FiddyErrors } from "../src/shared/FiddyErrors.sol";
+import { BonanzaErrors } from "../src/shared/BonanzaErrors.sol";
 import { ConfiguredDrandRegistry, IntegrationEndpoint } from "./utils/LotteryIntegrationSetup.sol";
-import { FiddyOperators, FiddyPositions } from "./utils/FiddySetup.sol";
+import { BonanzaOperators, BonanzaPositions } from "./utils/BonanzaSetup.sol";
 
 contract DeploymentDecimalsToken is ERC20 {
     uint8 internal immutable tokenDecimals;
@@ -49,8 +49,8 @@ contract DeploymentHarness is DeployLottery {
     }
 
     function initializeAgain(address diamond) external {
-        FiddyTokenFacet(diamond)
-            .initializeFiddy(STATICS, address(1), OPERATOR_COLLECTION, ACTIVATION_REGISTRY);
+        BonanzaTokenFacet(diamond)
+            .initializeBonanza(STATICS, address(1), OPERATOR_COLLECTION, ACTIVATION_REGISTRY);
     }
 
     function pinned() external pure returns (address, address, address, address, address) {
@@ -59,10 +59,10 @@ contract DeploymentHarness is DeployLottery {
 }
 
 /// @notice Runs the deployment script's cut and initializer against local stand-ins etched at
-/// its pinned dependency addresses. STATICS uses 6 decimals to prove FIDDY reads it.
-contract FiddyDeploymentTest is Test {
+/// its pinned dependency addresses. STATICS uses 6 decimals to prove BONANZA reads it.
+contract BonanzaDeploymentTest is Test {
     DeploymentHarness internal harness;
-    FiddyPositions internal positions;
+    BonanzaPositions internal positions;
     IntegrationEndpoint internal router;
 
     function setUp() public {
@@ -79,31 +79,32 @@ contract FiddyDeploymentTest is Test {
         vm.etch(drandRegistry, address(new ConfiguredDrandRegistry()).code);
         vm.etch(operators, address(new DeploymentDecimalsToken(0)).code);
         vm.etch(activationRegistry, address(new DeploymentActivationRegistry(operators)).code);
-        positions = new FiddyPositions();
+        positions = new BonanzaPositions();
         router = new IntegrationEndpoint();
     }
 
-    function testFreshDeploymentInitializesFiddyInTheCutTransaction() public {
+    function testFreshDeploymentInitializesBonanzaInTheCutTransaction() public {
         vm.recordLogs();
         DeployLottery.Deployment memory deployment =
             harness.deploy(address(router), address(positions));
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        // Both the base configuration and FIDDY bindings were written by the single cut call.
+        // Both the base configuration and BONANZA bindings were written by the single cut call.
         assertEq(_count(logs, deployment.diamond, IGovernance.LotteryConfigCreated.selector), 2);
-        assertEq(_count(logs, deployment.diamond, LibFiddy.FiddyInitialized.selector), 1);
+        assertEq(_count(logs, deployment.diamond, LibBonanza.BonanzaInitialized.selector), 1);
 
         assertEq(IERC20Metadata(deployment.diamond).decimals(), 6);
-        assertEq(IERC20Metadata(deployment.diamond).name(), "FIDDY");
+        assertEq(IERC20Metadata(deployment.diamond).name(), "Bonanza");
+        assertEq(IERC20Metadata(deployment.diamond).symbol(), "BONANZA");
         (address statics,,, address operators, address activationRegistry) = harness.pinned();
         (address underlying, address positionNFT, address boundOperators, address registry) =
-            FiddyViewFacet(deployment.diamond).fiddyBindings();
+            BonanzaViewFacet(deployment.diamond).bonanzaBindings();
         assertEq(underlying, statics);
         assertEq(positionNFT, address(positions));
         assertEq(boundOperators, operators);
         assertEq(registry, activationRegistry);
 
-        vm.expectRevert(FiddyErrors.AlreadyInitialized.selector);
+        vm.expectRevert(BonanzaErrors.AlreadyInitialized.selector);
         harness.initializeAgain(deployment.diamond);
     }
 
@@ -123,14 +124,14 @@ contract FiddyDeploymentTest is Test {
             abi.encodeCall(IERC165.supportsInterface, (reduced)),
             abi.encode(false)
         );
-        bytes memory reason = abi.encodeWithSelector(FiddyErrors.InvalidBinding.selector);
+        bytes memory reason = abi.encodeWithSelector(BonanzaErrors.InvalidBinding.selector);
         vm.expectRevert(abi.encodeWithSelector(Errors.InitializationFailed.selector, reason));
         harness.deploy(address(router), address(positions));
     }
 
     function testDeploymentRejectsAPositionNftWithoutTheModuleInterface() public {
-        address plainNft = address(new FiddyOperators(positions));
-        bytes memory reason = abi.encodeWithSelector(FiddyErrors.InvalidBinding.selector);
+        address plainNft = address(new BonanzaOperators(positions));
+        bytes memory reason = abi.encodeWithSelector(BonanzaErrors.InvalidBinding.selector);
         vm.expectRevert(abi.encodeWithSelector(Errors.InitializationFailed.selector, reason));
         harness.deploy(address(router), plainNft);
     }

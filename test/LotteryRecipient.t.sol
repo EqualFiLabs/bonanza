@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.30;
 
-import { FiddySetup } from "./utils/FiddySetup.sol";
+import { BonanzaSetup } from "./utils/BonanzaSetup.sol";
 import { IntegrationToken } from "./utils/LotteryIntegrationSetup.sol";
 import { IRevenue } from "../src/interfaces/IRevenue.sol";
 import { Errors } from "../src/shared/Errors.sol";
-import { FiddyErrors } from "../src/shared/FiddyErrors.sol";
-import { FiddyConfig } from "../src/shared/FiddyTypes.sol";
+import { BonanzaErrors } from "../src/shared/BonanzaErrors.sol";
+import { BonanzaConfig } from "../src/shared/BonanzaTypes.sol";
 import { AssetAccounting, LotteryConfig, Round, RoundStatus } from "../src/shared/Types.sol";
 
 contract RecipientToken is IntegrationToken {
@@ -39,7 +39,7 @@ contract RecipientToken is IntegrationToken {
     }
 }
 
-contract LotteryRecipientTest is FiddySetup {
+contract LotteryRecipientTest is BonanzaSetup {
     address internal beneficiary = makeAddr("beneficiary");
 
     function _recipientConfig(address asset) internal view returns (LotteryConfig memory config) {
@@ -57,7 +57,7 @@ contract LotteryRecipientTest is FiddySetup {
         vm.startPrank(authority);
         version = stakerBps == 0
             ? governance.createLotteryConfig(config)
-            : governance.createRewardLotteryConfig(config, FiddyConfig(0, stakerBps, false));
+            : governance.createRewardLotteryConfig(config, BonanzaConfig(0, stakerBps, false));
         governance.setLotteryConfigEnabled(version, true);
         vm.stopPrank();
     }
@@ -203,8 +203,8 @@ contract LotteryRecipientTest is FiddySetup {
         governance.createLotteryConfig(config);
         config.recipientBps = 4500;
         vm.expectRevert(Errors.InvalidConfig.selector);
-        governance.createRewardLotteryConfig(config, FiddyConfig(0, 501, false));
-        governance.createRewardLotteryConfig(config, FiddyConfig(0, 500, false));
+        governance.createRewardLotteryConfig(config, BonanzaConfig(0, 501, false));
+        governance.createRewardLotteryConfig(config, BonanzaConfig(0, 500, false));
         config.recipientBps = 0;
         config.recipient = address(0);
         governance.createLotteryConfig(config);
@@ -330,33 +330,33 @@ contract LotteryRecipientTest is FiddySetup {
         assertEq(asset.balanceOf(address(diamond)), 0);
     }
 
-    function testFiddyRecipientClaimKeepsCallerOrTreasuryReceiver() public {
+    function testBonanzaRecipientClaimKeepsCallerOrTreasuryReceiver() public {
         _wrap(1, alice, 10_000);
         vm.prank(alice);
-        fiddy.withdrawFiddy(1, 10_000);
+        bonanza.withdrawBonanza(1, 10_000);
         vm.prank(alice);
-        fiddy.approve(address(diamond), 10_000);
+        bonanza.approve(address(diamond), 10_000);
         LotteryConfig memory config = _recipientConfig(address(diamond));
         config.operatorProtocolBps = 0;
         uint256 id = _open(config, 0, 100);
         _settle(id);
         vm.prank(beneficiary);
-        vm.expectRevert(abi.encodeWithSelector(FiddyErrors.ReceiverRestricted.selector, bob));
+        vm.expectRevert(abi.encodeWithSelector(BonanzaErrors.ReceiverRestricted.selector, bob));
         revenue.claimRecipientRevenue(id, bob);
         vm.prank(beneficiary);
         assertEq(revenue.claimRecipientRevenue(id, beneficiary), 4500);
-        assertEq(fiddy.balanceOf(beneficiary), 4500);
+        assertEq(bonanza.balanceOf(beneficiary), 4500);
         _close(id);
-        assertEq(fiddy.balanceOf(address(diamond)), 0);
-        assertEq(fiddy.totalSupply(), 10_000);
+        assertEq(bonanza.balanceOf(address(diamond)), 0);
+        assertEq(bonanza.totalSupply(), 10_000);
     }
 
-    function testRestrictedFiddyRecipientExitDoesNotRelaxWinnerTransfers() public {
+    function testRestrictedBonanzaRecipientExitDoesNotRelaxWinnerTransfers() public {
         _wrap(1, alice, 10_000);
         vm.prank(alice);
-        fiddy.withdrawFiddy(1, 10_000);
+        bonanza.withdrawBonanza(1, 10_000);
         vm.prank(alice);
-        fiddy.approve(address(diamond), 10_000);
+        bonanza.approve(address(diamond), 10_000);
         LotteryConfig memory config = _recipientConfig(address(diamond));
         config.operatorProtocolBps = 0;
         uint256 id = _open(config, 0, 100);
@@ -364,20 +364,20 @@ contract LotteryRecipientTest is FiddySetup {
         Round memory current = stateView.round(id);
         vm.prank(current.winner);
         vm.expectRevert(
-            abi.encodeWithSelector(FiddyErrors.ReceiverRestricted.selector, beneficiary)
+            abi.encodeWithSelector(BonanzaErrors.ReceiverRestricted.selector, beneficiary)
         );
         claims.claimWinner(id, beneficiary);
         vm.prank(bob);
         revenue.flushRecipientRevenue(id);
-        assertEq(fiddy.balanceOf(beneficiary), 4500);
+        assertEq(bonanza.balanceOf(beneficiary), 4500);
         assertEq(revenue.availableTokenSurplus(address(diamond)), 0);
         assertEq(revenue.availableTokenSurplus(address(tokenA)), 0);
         vm.prank(beneficiary);
-        vm.expectRevert(FiddyErrors.TransferRestricted.selector);
-        fiddy.transfer(bob, 1);
+        vm.expectRevert(BonanzaErrors.TransferRestricted.selector);
+        bonanza.transfer(bob, 1);
         _close(id);
-        assertEq(fiddy.balanceOf(address(diamond)), 0);
-        assertEq(fiddy.totalSupply(), 10_000);
+        assertEq(bonanza.balanceOf(address(diamond)), 0);
+        assertEq(bonanza.totalSupply(), 10_000);
         assertEq(tokenA.balanceOf(address(diamond)), 10_000);
     }
 
@@ -386,7 +386,7 @@ contract LotteryRecipientTest is FiddySetup {
     {
         _wrap(1, alice, 100);
         vm.prank(alice);
-        staking.stakeFiddy(1, 100);
+        staking.stakeBonanza(1, 100);
         LotteryConfig memory config = _recipientConfig(address(tokenB));
         config.ticketPrice = uint96(bound(seeds[0], 1, type(uint96).max));
         config.ticketCount = uint32(bound(seeds[1], 1, type(uint32).max));
@@ -408,7 +408,7 @@ contract LotteryRecipientTest is FiddySetup {
         }
         _settle(id);
         AssetAccounting memory a = stateView.assetAccounting(address(tokenB));
-        uint256 reserved = fiddyView.fiddyAsset(address(tokenB)).reserved;
+        uint256 reserved = bonanzaView.bonanzaAsset(address(tokenB)).reserved;
         assertEq(a.activeRoundEscrow, 0);
         assertEq(
             a.winnerLiability + a.recipientLiability + a.pendingOperatorRevenueTotal
@@ -420,7 +420,7 @@ contract LotteryRecipientTest is FiddySetup {
         _close(id);
         if (reserved != 0) {
             vm.prank(alice);
-            staking.claimFiddyRevenue(1, address(tokenB), alice);
+            staking.claimBonanzaRevenue(1, address(tokenB), alice);
         }
         assertEq(tokenB.balanceOf(address(diamond)), 0);
     }

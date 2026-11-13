@@ -1,6 +1,6 @@
 # Randomness and Verification Boundary
 
-Every Statics Lottery Round uses exactly one drand Quicknet beacon verified by the
+Every Bonanza Round uses exactly one drand Quicknet beacon verified by the
 external immutable `EqualFiDrandRegistry`. There is no Lottery-local BLS implementation and no
 fallback randomness.
 

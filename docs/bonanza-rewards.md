@@ -1,11 +1,11 @@
-# FIDDY rewards
+# BONANZA rewards
 
 ## Token and custody
 
-FIDDY is the Lottery Diamond's restricted ERC-20, backed one-for-one in STATICS
+BONANZA is the Lottery Diamond's restricted ERC-20, backed one-for-one in STATICS
 base units. Following Burntato's reserve model, exact STATICS funding immediately
-allocates backing and mints matching FIDDY into protocol reward inventory. Participation
-credits those existing FIDDY units to a canonical PositionNFT account, reducing inventory
+allocates backing and mints matching BONANZA into protocol reward inventory. Participation
+credits those existing BONANZA units to a canonical PositionNFT account, reducing inventory
 without changing supply, backing or the Diamond's ERC-20 balance. Inventory exhaustion
 credits only available units, reports the shortfall and creates no debt. Reserve funding
 remains available with public conversions disabled and grants the funder no withdrawal right.
@@ -13,24 +13,24 @@ remains available with public conversions disabled and grants the funder no with
 Ordinary transfers require either endpoint to be an explicitly approved consumer.
 There is no implicit governance exemption. Exact protocol movements handle account
 deposits and withdrawals; raw transfers into custody do not credit accounts. External
-FIDDY can be deposited into an owned PositionNFT. Unstaked account FIDDY can be withdrawn
+BONANZA can be deposited into an owned PositionNFT. Unstaked account BONANZA can be withdrawn
 only to the current PositionNFT owner, who is the caller. Approval does not confer account
 authority. Consumer approval does not confer mint, redemption or reserve authority.
 Revocation affects future ordinary transfers; consumers are trusted integration contracts
 and must not trap their users' holdings. No AMM is installed by this extension.
 
-Winner, finalizer-tip, staker revenue and recipient-directed claims in FIDDY go to the caller or
+Winner, finalizer-tip, staker revenue and recipient-directed claims in BONANZA go to the caller or
 the governance Treasury recipient. Treasury delivery goes to its configured recipient. The dedicated Round
 Recipient payout goes only to that Round's snapshotted recipient. Other Payment Tokens keep their arbitrary receiver
 semantics. Unwrapping pays STATICS and keeps its receiver parameter.
 
-PositionNFT sales transfer FIDDY account ownership. The dedicated Round Recipient payout
+PositionNFT sales transfer BONANZA account ownership. The dedicated Round Recipient payout
 also permits the configured revenue allocation without an approved consumer. Account balance, stake, stake lock, registration and accrued revenue all
 follow the PositionNFT.
 
 Wrap and unwrap launch independently disabled, with zero public wrap cap. When
 explicitly enabled, wrapping pulls exact STATICS, credits an owned account and
-increments public-wrap outstanding. Unwrapping burns unstaked account FIDDY and
+increments public-wrap outstanding. Unwrapping burns unstaked account BONANZA and
 returns exact STATICS; outstanding decreases by min(redemption, outstanding).
 Participation issuance consumes no public wrap capacity. Unwrap does not change
 the cap. No arbitrary inventory/backing withdrawal or unbacked mint exists.
@@ -49,16 +49,16 @@ revenue asset if it is not already listed. At most 64 revenue assets can ever be
 the 65th distinct asset reverts `RevenueAssetLimitReached`. Listing never loops over
 configurations, and an asset is always listed before its revenue index can first move.
 
-A configuration priced in FIDDY with a nonzero Operator share is rejected unless the current
-integration's Operator Fee Router is an approved FIDDY consumer, because the Router must be
+A configuration priced in BONANZA with a nonzero Operator share is rejected unless the current
+integration's Operator Fee Router is an approved BONANZA consumer, because the Router must be
 able to pay Operators. The same rule is checked again before opening and before every Router
-funding attempt; funding stays retryable and FIDDY waits in the Lottery until it passes.
-FIDDY as a Payment Token is not planned for launch.
+funding attempt; funding stays retryable and BONANZA waits in the Lottery until it passes.
+BONANZA as a Payment Token is not planned for launch.
 
 Both opening (including its initial purchase) and later buying accept explicit
 PositionNFT selection. Reward-enabled configurations cannot use accountless
 entrypoints. Tickets and winner claims remain wallet-owned under existing semantics.
-Participation has no buyer-side minimum issuance. A buyer can receive zero FIDDY when
+Participation has no buyer-side minimum issuance. A buyer can receive zero BONANZA when
 inventory is exhausted. A minimum can be added with a facet cut before finalization.
 
 ## Revenue allocation
@@ -72,12 +72,12 @@ share = amount * (10000 - winnerBps) * stakerProtocolBps / 100000000
 ```
 
 `winnerBps` comes from the round's configuration snapshot and `stakerProtocolBps` from its
-FIDDY snapshot. Every purchase path books the share: `openRound`, `openRoundForPosition`,
+BONANZA snapshot. Every purchase path books the share: `openRound`, `openRoundForPosition`,
 `buyTickets` and `buyTicketsForPosition`. The purchase adds `amount - share` to round escrow
 and records `share` against the round. When total stake weight is positive, the share is
 reserved and added to the asset's revenue index; division dust follows the dust rule below.
-When total weight is zero, the share goes to Treasury and emits `FiddyZeroWeightRevenue`.
-Otherwise `FiddyRevenueBooked` reports the round, asset, amount, total weight and new index.
+When total weight is zero, the share goes to Treasury and emits `BonanzaZeroWeightRevenue`.
+Otherwise `BonanzaRevenueBooked` reports the round, asset, amount, total weight and new index.
 
 Settlement computes the winner, Operator, Recipient and finalizer amounts from aggregate receipts:
 
@@ -93,7 +93,7 @@ treasury  = protocol - operator - staker - recipient - finalizer
 
 Escrow is released by `receipts - staker`. Settlement emits `StakerRevenueSettled` with the
 round's booked staker total. It neither reads nor calls Statics, and it does not change
-FIDDY staking state. The sum of per-purchase floors never exceeds the floor of the aggregate,
+BONANZA staking state. The sum of per-purchase floors never exceeds the floor of the aggregate,
 and `protocol - operator >= receipts * (10000 - winnerBps) * stakerProtocolBps / 10000^2`
 whenever the Operator and staker BPS sum to at most 10000. The staker total is therefore
 always covered. The additional combined bound
@@ -105,13 +105,13 @@ earlier purchases.
 
 ## Staking
 
-Staked FIDDY stays in the account's custody balance; available FIDDY is balance minus stake.
+Staked BONANZA stays in the account's custody balance; available BONANZA is balance minus stake.
 Base weight equals stake. Revenue indexes are per asset and global. An account's accrual is
 `weight * (index - paidIndex)` with fractional remainders retained per account.
 
 Before any weight change, and in claim and cleanup, the account is checkpointed across every
 listed revenue asset in the same call. There is no paging and no global synchronization.
-`checkpointFiddyAccount(id)` is permissionless and takes no work limit. Its purpose is to let
+`checkpointBonanzaAccount(id)` is permissionless and takes no work limit. Its purpose is to let
 anyone trigger the boost check below.
 
 ### Unstake lock
@@ -126,7 +126,7 @@ stakeStart = now - floor(prior * credit / (prior + amount))
 
 Rounding down only lengthens the lock. This mirrors the weighted reset in Statics'
 `LibGlobalRewards._increasePending`. A large top-up on an old small stake relocks almost
-fully. `unstakeFiddy` reverts with `StakeLocked` until `now >= stakeStart + STAKE_LOCK`.
+fully. `unstakeBonanza` reverts with `StakeLocked` until `now >= stakeStart + STAKE_LOCK`.
 A partial unstake leaves the start time unchanged. The lock stays with the PositionNFT when
 it is sold. The lock exists to stop flash-funded and same-transaction self-rebate stakes; it
 is not a vesting schedule.
@@ -157,8 +157,8 @@ boost is invalid if either:
 
 A higher multiplier is not a transfer; the stored value is kept until the owner re-registers.
 Every checkpoint of a registered account checks validity before booking accrual. That covers
-claim, stake, unstake, `checkpointFiddyAccount`, register, remove and cleanup, so a stale
-boost never becomes claimable. `indexedFiddyRevenue` reports the post-forfeit amount.
+claim, stake, unstake, `checkpointBonanzaAccount`, register, remove and cleanup, so a stale
+boost never becomes claimable. `indexedBonanzaRevenue` reports the post-forfeit amount.
 
 ### Forfeit
 
@@ -174,7 +174,7 @@ When the boost is invalid, for each listed asset:
    of its own forfeit.
 
 The registration and the Operator mapping are then cleared, weight returns to stake, total
-weight is updated and `FiddyBoostForfeited` is emitted per asset with the forfeited amount.
+weight is updated and `BonanzaBoostForfeited` is emitted per asset with the forfeited amount.
 The forfeit covers the whole boosted excess since the account's last checkpoint, including
 excess earned before the transfer. Excess booked by a checkpoint before either NFT changes
 hands is kept.
@@ -184,7 +184,7 @@ same tier, all between two checkpoints, is not detected.
 
 ## Account nonce
 
-Each account has a `uint64` `nonce`, exposed through `fiddyAccount(id)`. It increments on
+Each account has a `uint64` `nonce`, exposed through `bonanzaAccount(id)`. It increments on
 every owner action that changes the account: deposit, withdraw, wrap, unwrap, stake, unstake,
 claim with a nonzero payout, register, remove, cleanup and participation credit. It also
 increments on a boost forfeit. A third-party checkpoint that only books accrued revenue does
@@ -193,7 +193,7 @@ can condition orders on this nonce together with Statics' `stateNonce`.
 
 ## Account authority and lifecycle
 
-Financial actions require current `ownerOf`, never NFT approvals. One aggregate FIDDY
+Financial actions require current `ownerOf`, never NFT approvals. One aggregate BONANZA
 external leg attaches atomically with the first financial state and remains while the account
 holds tokens, stake, a registration or entitlement. NFT transfer changes financial control and
 carries prior rewards without moving reserves. The seller must claim before sale if desired.
@@ -201,7 +201,7 @@ Unstaking does not redeem underlying.
 
 Cleanup checkpoints the account, requires zero balance, stake and whole claims for every
 listed asset, surrenders only sub-unit fractions as dust, clears any registration and detaches
-the leg. No whole claim or FIDDY balance is erased to detach a leg.
+the leg. No whole claim or BONANZA balance is erased to detach a leg.
 
 Global division dust is separately reserved and never reinjected into indexes; whole units of
 dust move to Treasury. All payment assets remain independent.
@@ -215,7 +215,7 @@ the `supportsInterface` binding check at initialization, and `ownerOf`. It does 
 Statics NFT transfer history, and it adds no product callbacks. The shared interface has seven
 lifecycle/discovery selectors and ERC-165 ID `0x2795ac62`; the former eleven-selector ID
 `0x6a782754` is not accepted for new bindings. Matching interface deployment and Statics module
-approval are prerequisites for new accounts. Existing FIDDY financial storage, revenue indexes,
+approval are prerequisites for new accounts. Existing BONANZA financial storage, revenue indexes,
 boost rules and account nonces require no migration from this ABI change. This dependency pin
 is a local integration candidate, not evidence of a production upgrade.
 
@@ -306,6 +306,22 @@ exit check. Certora CLI 8.18.0 uses the pinned prover revision
 `f5f77783430449791186f7812ebd53addf22cabd` with Z3 4.16.0. Generated specifications, logs and
 reports remain in private evidence; this section is the versioned summary.
 
+
+
+## Naming and compatibility
+
+The ERC-20 name is `Bonanza` and its symbol is `BONANZA`. Current source types, facets,
+functions and events use Bonanza terminology. Renamed functions and events have new selectors
+and signature topics; clients must use the matching ABI. This release is a fresh-deployment
+candidate, not a drop-in facet upgrade for an older deployment.
+
+The existing `statics.lottery.storage.fiddy.v1`, `statics.lottery.fiddy.movement.v1` and
+`statics.lottery.fiddy.account.v1` hash inputs intentionally remain unchanged. They identify
+financial storage, transient movement authorization and the external account module. Rebranding
+must not create different namespaces or orphan existing module registrations. Historical deployment
+records and the candidate-bound formal summary above retain their original names and hashes;
+those results do not qualify the renamed release.
+
 ## Client and deployment preparation
 
 Install token, staking and view selector groups together with the updated purchase,
@@ -313,30 +329,30 @@ governance, settlement and surplus facets. Use the current configuration, Round 
 types directly for a fresh deployment. Reward settings use their existing separate namespace;
 recipient fields are embedded in the existing Lottery types.
 
-The deployment script initializes FIDDY in the same transaction as the Diamond cut through
-`LotteryInit.initializeWithFiddy`, binding STATICS, the PositionNFT, the Operator collection
+The deployment script initializes BONANZA in the same transaction as the Diamond cut through
+`LotteryInit.initializeWithBonanza`, binding STATICS, the PositionNFT, the Operator collection
 and the activation registry. It reads the PositionNFT address from
-`LOTTERY_FIDDY_POSITION_NFT`; initialization verifies its code and module interface and reverts
+`LOTTERY_BONANZA_POSITION_NFT`; initialization verifies its code and module interface and reverts
 the whole cut otherwise. A freshly deployed Diamond therefore reports STATICS's decimals
 immediately. Initialization enables no reward configuration. Both conversions, wrap capacity, boosts and external consumer
 approval launch at zero/false. Statics governance must separately approve the Diamond as an
 external account module before the first account attaches.
 
-Clients read `fiddyReserve`, `fiddyAccount`, `fiddyOperatorAccount`, `fiddyAsset`,
-`fiddyCredit`, `indexedFiddyRevenue`, `fiddyStaking`, `fiddyRoundRevenue` and
-`fiddyRevenueAssets`. Account balance includes raw stake; available FIDDY is balance minus
+Clients read `bonanzaReserve`, `bonanzaAccount`, `bonanzaOperatorAccount`, `bonanzaAsset`,
+`bonanzaCredit`, `indexedBonanzaRevenue`, `bonanzaStaking`, `bonanzaRoundRevenue` and
+`bonanzaRevenueAssets`. Account balance includes raw stake; available BONANZA is balance minus
 stake. The unlock time is `stakeStart + 24 hours`. Claims remain available during pause.
 
-Run the independent pinned Statics build before FIDDY tests, then the ABI parity check:
+Run the independent pinned Statics build before BONANZA tests, then the ABI parity check:
 
 ```sh
 forge build --config-path integration/foundry.toml
 forge build
 python3 script/check-statics-abi.py
-forge test --match-path 'test/Fiddy*.t.sol'
+forge test --match-path 'test/Bonanza*.t.sol'
 ```
 
-The Statics fixture uses its compiler/EVM/optimizer settings and local launch funding. FIDDY
+The Statics fixture uses its compiler/EVM/optimizer settings and local launch funding. BONANZA
 tests deploy its resulting artifacts with their actual bytecode. These local fixtures are
 distinct from block-pinned live dependency qualification. Neither executes a deployment
 transaction.
@@ -347,6 +363,6 @@ returns L1 block 26303058. The test performs only local fork impersonation and c
 creation; it does not broadcast. Runtime code hashes are checked against the pinned deployment
 manifest before the registry handoff.
 
-The optional round recipient is a fixed protocol payout destination for FIDDY-priced rounds.
-It does not relax ordinary FIDDY transfers or receiver restrictions on other claim paths.
+The optional round recipient is a fixed protocol payout destination for BONANZA-priced rounds.
+It does not relax ordinary BONANZA transfers or receiver restrictions on other claim paths.
 Recipient, Operator and configured staker allocations must fit the non-winner budget.

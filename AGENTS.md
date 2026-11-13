@@ -2,8 +2,8 @@
 
 ## Project Identity and Boundaries
 
-- The product is **Statics Lottery**. `fiddy` is the workspace/repository name,
-  not the protocol's user-facing name.
+- The product and ERC-20 name are **Bonanza**, and the token symbol is **BONANZA**.
+  The repository is `EqualFiLabs/bonanza`.
 - Treat `specs/requirements.md`, `specs/design.md`, and `specs/tasks.md` as the
   source-of-truth specification set. Keep them synchronized when an accepted
   product or architecture decision changes.
@@ -15,11 +15,11 @@
   not duplicate BLS or drand verification inside the Lottery.
 - `OperatorFeeRouter` is the external Operator-allocation boundary. The Lottery
   accounts for and forwards the configured Operator share; it does not maintain
-  the Router's per-Operator ownership, reward-index, or claim state. FIDDY staking
+  the Router's per-Operator ownership, reward-index, or claim state. BONANZA staking
   registrations are a separate PositionNFT account concern.
 - The Lottery consumes only the generic Statics external-account lifecycle and
   PositionNFT `ownerOf`; it does not read Statics NFT transfer history. Custody,
-  FIDDY backing, staking and revenue stay in the Lottery. Do not add product
+  BONANZA backing, staking and revenue stay in the Lottery. Do not add product
   callbacks or modify finalized launch dependencies.
 - Do not modify sibling repositories or external deployments unless the user
   explicitly expands the scope. Inspect their live source and manifests when
@@ -42,8 +42,8 @@
 
 ## Protocol Invariants
 
-- FIDDY reserve funding follows Burntato: exact STATICS funding immediately mints
-  matching FIDDY into protocol reward inventory. Ticket participation distributes
+- BONANZA reserve funding follows Burntato: exact STATICS funding immediately mints
+  matching BONANZA into protocol reward inventory. Ticket participation distributes
   existing inventory without minting or changing backing. Public wrap and unwrap
   have independent enable flags and both launch disabled, with zero wrap capacity.
 - Governance creates immutable Round Configuration Versions and controls which

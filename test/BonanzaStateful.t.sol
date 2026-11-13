@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.30;
-import { FiddyRevenueSetup } from "./FiddyStaking.t.sol";
-import { FiddyAccount, FiddyAsset, FiddyCredit } from "../src/shared/FiddyTypes.sol";
-import { FiddyConfig } from "../src/shared/FiddyTypes.sol";
+import { BonanzaRevenueSetup } from "./BonanzaStaking.t.sol";
+import { BonanzaAccount, BonanzaAsset, BonanzaCredit } from "../src/shared/BonanzaTypes.sol";
+import { BonanzaConfig } from "../src/shared/BonanzaTypes.sol";
 import { AssetAccounting } from "../src/shared/Types.sol";
-import { LibFiddyStaking } from "../src/libraries/LibFiddyStaking.sol";
+import { LibBonanzaStaking } from "../src/libraries/LibBonanzaStaking.sol";
 
-contract FiddyStatefulTest is FiddyRevenueSetup {
+contract BonanzaStatefulTest is BonanzaRevenueSetup {
     uint256 internal constant RAY = 1e27;
 
     function setUp() public override {
@@ -25,19 +25,19 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
     function act(uint256 seed) external {
         uint256 id = 1 + seed % 2;
         address owner = positions.ownerOf(id);
-        FiddyAccount memory a = fiddyView.fiddyAccount(id);
+        BonanzaAccount memory a = bonanzaView.bonanzaAccount(id);
         uint256 mode = (seed >> 16) % 14;
         if (mode == 0) {
             _settle(seed % 2 == 0 ? address(tokenA) : address(tokenB), seed % 3 == 0);
         } else if (mode == 1 && a.balance > a.staked) {
             vm.prank(owner);
-            staking.stakeFiddy(id, 1 + seed % (a.balance - a.staked));
+            staking.stakeBonanza(id, 1 + seed % (a.balance - a.staked));
         } else if (
             mode == 2 && a.staked > 0
-                && block.timestamp >= a.stakeStart + LibFiddyStaking.STAKE_LOCK
+                && block.timestamp >= a.stakeStart + LibBonanzaStaking.STAKE_LOCK
         ) {
             vm.prank(owner);
-            staking.unstakeFiddy(id, 1 + seed % a.staked);
+            staking.unstakeBonanza(id, 1 + seed % a.staked);
         } else if (mode == 3) {
             _wrap(id, owner, 1 + seed % 1000);
         } else if (mode == 4) {
@@ -45,22 +45,24 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
             positions.transferFrom(owner, owner == alice ? bob : alice, id);
         } else if (mode == 5) {
             vm.prank(owner);
-            staking.claimFiddyRevenue(id, seed % 2 == 0 ? address(tokenA) : address(tokenB), owner);
+            staking.claimBonanzaRevenue(
+                id, seed % 2 == 0 ? address(tokenA) : address(tokenB), owner
+            );
         } else if (mode == 6 && a.balance > a.staked) {
             uint256 amount = 1 + seed % (a.balance - a.staked);
             vm.prank(owner);
-            fiddy.withdrawFiddy(id, amount);
+            bonanza.withdrawBonanza(id, amount);
             vm.prank(owner);
-            fiddy.approve(address(diamond), amount);
+            bonanza.approve(address(diamond), amount);
             vm.prank(owner);
-            fiddy.depositFiddy(id, amount);
+            bonanza.depositBonanza(id, amount);
         } else if (mode == 7) {
             vm.prank(owner);
-            fiddy.fundFiddyReserve(1 + seed % 1000);
+            bonanza.fundBonanzaReserve(1 + seed % 1000);
         } else if (mode == 8) {
             _participate(id, owner, seed % 100 + 1);
         } else if (mode == 9) {
-            staking.checkpointFiddyAccount(id);
+            staking.checkpointBonanzaAccount(id);
         } else if (mode == 10) {
             skip(seed % 2 days);
         } else if (mode == 11) {
@@ -72,7 +74,7 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
             _register(id, owner, seed);
         } else if (mode == 13) {
             vm.prank(owner);
-            staking.removeFiddyOperator(id);
+            staking.removeBonanzaOperator(id);
         }
     }
 
@@ -84,13 +86,14 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
         vm.prank(owner);
         operators.activate(operatorId, uint16(current + (seed >> 40) % (12_501 - current)));
         vm.prank(owner);
-        try staking.registerFiddyOperator(id, operatorId) { } catch { }
+        try staking.registerBonanzaOperator(id, operatorId) { } catch { }
     }
 
     function _participate(uint256 id, address owner, uint256 rate) internal {
         vm.startPrank(authority);
         uint64 version = governance.createRewardLotteryConfig(
-            _config(address(tokenB), 100, 10, 10, 1 days, 0), FiddyConfig(uint96(rate), 5000, true)
+            _config(address(tokenB), 100, 10, 10, 1 days, 0),
+            BonanzaConfig(uint96(rate), 5000, true)
         );
         governance.setLotteryConfigEnabled(version, true);
         vm.stopPrank();
@@ -100,13 +103,13 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
     }
 
     function invariantBackingCustodyAndEveryAssetConserved() public view {
-        (uint256 inventory, uint256 backing, uint256 custody,,,,) = fiddyView.fiddyReserve();
-        assertEq(fiddy.totalSupply(), backing);
-        assertEq(fiddy.balanceOf(address(diamond)), inventory + custody);
-        FiddyAccount memory a = fiddyView.fiddyAccount(1);
-        FiddyAccount memory b = fiddyView.fiddyAccount(2);
+        (uint256 inventory, uint256 backing, uint256 custody,,,,) = bonanzaView.bonanzaReserve();
+        assertEq(bonanza.totalSupply(), backing);
+        assertEq(bonanza.balanceOf(address(diamond)), inventory + custody);
+        BonanzaAccount memory a = bonanzaView.bonanzaAccount(1);
+        BonanzaAccount memory b = bonanzaView.bonanzaAccount(2);
         assertEq(custody, a.balance + b.balance);
-        (uint256 totalWeight,,) = fiddyView.fiddyStaking();
+        (uint256 totalWeight,,) = bonanzaView.bonanzaStaking();
         assertEq(totalWeight, a.weight + b.weight);
         assertLe(a.staked, a.balance);
         assertLe(b.staked, b.balance);
@@ -121,23 +124,23 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
 
     function _registrations() internal view {
         for (uint256 id = 1; id <= 2; ++id) {
-            FiddyAccount memory a = fiddyView.fiddyAccount(id);
-            if (a.registered) assertEq(fiddyView.fiddyOperatorAccount(a.operatorId), id);
+            BonanzaAccount memory a = bonanzaView.bonanzaAccount(id);
+            if (a.registered) assertEq(bonanzaView.bonanzaOperatorAccount(a.operatorId), id);
             else assertEq(a.weight, a.staked);
-            uint256 occupant = fiddyView.fiddyOperatorAccount(id);
-            if (occupant != 0) assertEq(fiddyView.fiddyAccount(occupant).operatorId, id);
+            uint256 occupant = bonanzaView.bonanzaOperatorAccount(id);
+            if (occupant != 0) assertEq(bonanzaView.bonanzaAccount(occupant).operatorId, id);
         }
     }
 
     /// @dev Reserved revenue equals claimable, retained fractions and unbooked accrual of every
     /// account plus global dust; the whole-unit claims alone can never exceed it.
     function _entitlement(address asset) internal view {
-        FiddyAsset memory book = fiddyView.fiddyAsset(asset);
+        BonanzaAsset memory book = bonanzaView.bonanzaAsset(asset);
         uint256 scaled = book.dustRay;
         uint256 claims;
         for (uint256 id = 1; id <= 2; ++id) {
-            FiddyCredit memory c = fiddyView.fiddyCredit(id, asset);
-            uint256 accrual = fiddyView.fiddyAccount(id).weight * (book.indexRay - c.paidIndex);
+            BonanzaCredit memory c = bonanzaView.bonanzaCredit(id, asset);
+            uint256 accrual = bonanzaView.bonanzaAccount(id).weight * (book.indexRay - c.paidIndex);
             scaled += c.claimable * RAY + c.remainderRay + accrual;
             claims += c.claimable + (c.remainderRay + accrual) / RAY;
         }
@@ -149,6 +152,6 @@ contract FiddyStatefulTest is FiddyRevenueSetup {
         AssetAccounting memory a = stateView.assetAccounting(asset);
         return a.activeRoundEscrow + a.winnerLiability + a.refundLiability + a.finalizerLiability
             + a.pendingOperatorRevenueTotal + a.treasuryAvailable
-            + fiddyView.fiddyAsset(asset).reserved;
+            + bonanzaView.bonanzaAsset(asset).reserved;
     }
 }

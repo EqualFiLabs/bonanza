@@ -3,16 +3,16 @@ pragma solidity 0.8.30;
 
 import { IGovernance } from "../interfaces/IGovernance.sol";
 import { LibDiamond } from "../libraries/LibDiamond.sol";
-import { LibFiddy } from "../libraries/LibFiddy.sol";
+import { LibBonanza } from "../libraries/LibBonanza.sol";
 import { LibLotteryConfig } from "../libraries/LibLotteryConfig.sol";
 import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
 import { LibOperatorFeeRouter } from "../libraries/LibOperatorFeeRouter.sol";
 import { LibReentrancy } from "../libraries/LibReentrancy.sol";
 import { Errors } from "../shared/Errors.sol";
-import { FiddyBindings } from "../shared/FiddyTypes.sol";
+import { BonanzaBindings } from "../shared/BonanzaTypes.sol";
 import { IntegrationConfig, LotteryConfig } from "../shared/Types.sol";
 
-/// @notice Atomic initializer for a newly deployed Statics Lottery Diamond.
+/// @notice Atomic initializer for a newly deployed Bonanza Diamond.
 /// @dev This contract is delegatecalled by an authority-approved Diamond cut. The authority is
 /// installed by the Diamond constructor and is verified here rather than written a second time.
 contract LotteryInit {
@@ -29,12 +29,12 @@ contract LotteryInit {
         _initialize(params);
     }
 
-    /// @notice Also binds FIDDY, so the token is complete in the same transaction as the cut.
-    function initializeWithFiddy(InitParams calldata params, FiddyBindings calldata fiddy)
+    /// @notice Also binds BONANZA, so the token is complete in the same transaction as the cut.
+    function initializeWithBonanza(InitParams calldata params, BonanzaBindings calldata bonanza)
         external
     {
         _initialize(params);
-        LibFiddy.initialize(fiddy);
+        LibBonanza.initialize(bonanza);
     }
 
     function _initialize(InitParams calldata params) private {

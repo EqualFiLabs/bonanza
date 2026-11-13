@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 /// @dev One exact protocol movement, consumed by the ERC-20 update hook.
-library LibFiddyMovement {
+library LibBonanzaMovement {
     bytes32 private constant SLOT = keccak256("statics.lottery.fiddy.movement.v1");
 
     function authorize(address from, address to, uint256 amount) internal {

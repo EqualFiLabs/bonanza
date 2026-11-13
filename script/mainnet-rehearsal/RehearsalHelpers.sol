@@ -42,13 +42,13 @@ contract RehearsalToken is ERC20 {
     }
 }
 
-interface IRehearsalFiddy {
-    function depositFiddy(uint256 id, uint256 amount) external;
-    function stakeFiddy(uint256 id, uint256 amount) external;
-    function unstakeFiddy(uint256 id, uint256 amount) external;
-    function wrapFiddy(uint256 id, uint256 amount) external;
-    function withdrawFiddy(uint256 id, uint256 amount) external;
-    function unwrapFiddy(uint256 id, uint256 amount, address receiver) external;
+interface IRehearsalBonanza {
+    function depositBonanza(uint256 id, uint256 amount) external;
+    function stakeBonanza(uint256 id, uint256 amount) external;
+    function unstakeBonanza(uint256 id, uint256 amount) external;
+    function wrapBonanza(uint256 id, uint256 amount) external;
+    function withdrawBonanza(uint256 id, uint256 amount) external;
+    function unwrapBonanza(uint256 id, uint256 amount, address receiver) external;
     function openRound(uint64 version, uint32 quantity) external returns (uint256);
 }
 
@@ -84,18 +84,18 @@ contract RehearsalBorrower {
         IERC20(payment).approve(lottery, type(uint256).max);
         IERC20(wrap ? payment : lottery).transferFrom(msg.sender, address(this), amount);
         if (wrap) {
-            IRehearsalFiddy(lottery).wrapFiddy(position, amount);
+            IRehearsalBonanza(lottery).wrapBonanza(position, amount);
         } else {
             IERC20(lottery).approve(lottery, amount);
-            IRehearsalFiddy(lottery).depositFiddy(position, amount);
+            IRehearsalBonanza(lottery).depositBonanza(position, amount);
         }
-        IRehearsalFiddy(lottery).stakeFiddy(position, amount);
-        IRehearsalFiddy(lottery).openRound(version, 1);
-        IRehearsalFiddy(lottery).unstakeFiddy(position, amount);
+        IRehearsalBonanza(lottery).stakeBonanza(position, amount);
+        IRehearsalBonanza(lottery).openRound(version, 1);
+        IRehearsalBonanza(lottery).unstakeBonanza(position, amount);
         if (wrap) {
-            IRehearsalFiddy(lottery).unwrapFiddy(position, amount, address(this));
+            IRehearsalBonanza(lottery).unwrapBonanza(position, amount, address(this));
         } else {
-            IRehearsalFiddy(lottery).withdrawFiddy(position, amount);
+            IRehearsalBonanza(lottery).withdrawBonanza(position, amount);
         }
         IERC20(wrap ? payment : lottery).transfer(msg.sender, amount);
     }

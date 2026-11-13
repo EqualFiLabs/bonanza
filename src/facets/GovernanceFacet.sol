@@ -2,11 +2,11 @@
 pragma solidity 0.8.30;
 
 import { IGovernance } from "../interfaces/IGovernance.sol";
-import { LibFiddy } from "../libraries/LibFiddy.sol";
-import { LibFiddyStaking } from "../libraries/LibFiddyStaking.sol";
-import { LibFiddyStorage } from "../libraries/LibFiddyStorage.sol";
-import { FiddyConfig } from "../shared/FiddyTypes.sol";
-import { FiddyErrors } from "../shared/FiddyErrors.sol";
+import { LibBonanza } from "../libraries/LibBonanza.sol";
+import { LibBonanzaStaking } from "../libraries/LibBonanzaStaking.sol";
+import { LibBonanzaStorage } from "../libraries/LibBonanzaStorage.sol";
+import { BonanzaConfig } from "../shared/BonanzaTypes.sol";
+import { BonanzaErrors } from "../shared/BonanzaErrors.sol";
 import { LibDiamond } from "../libraries/LibDiamond.sol";
 import { LibLotteryConfig } from "../libraries/LibLotteryConfig.sol";
 import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
@@ -28,21 +28,20 @@ contract GovernanceFacet is IGovernance {
         return _createConfig(config);
     }
 
-    function createRewardLotteryConfig(LotteryConfig calldata config, FiddyConfig calldata rewards)
-        external
-        onlyAuthority
-        returns (uint64 version)
-    {
-        LibFiddy.enforceInitialized();
+    function createRewardLotteryConfig(
+        LotteryConfig calldata config,
+        BonanzaConfig calldata rewards
+    ) external onlyAuthority returns (uint64 version) {
+        LibBonanza.enforceInitialized();
         if (
             uint256(config.operatorProtocolBps) + rewards.stakerProtocolBps > 10_000
                 || (!rewards.participation && rewards.unitsPerTicket != 0)
-        ) revert FiddyErrors.InvalidRewardsConfig();
+        ) revert BonanzaErrors.InvalidRewardsConfig();
         version = _createConfig(config);
         LibLotteryConfig.validateAllocation(config, rewards.stakerProtocolBps);
-        LibFiddyStorage.state().configs[version] = rewards;
-        if (rewards.stakerProtocolBps != 0) LibFiddyStaking.list(config.paymentToken);
-        emit FiddyConfigCreated(version, rewards);
+        LibBonanzaStorage.state().configs[version] = rewards;
+        if (rewards.stakerProtocolBps != 0) LibBonanzaStaking.list(config.paymentToken);
+        emit BonanzaConfigCreated(version, rewards);
     }
 
     function _createConfig(LotteryConfig calldata config) private returns (uint64 version) {

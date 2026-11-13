@@ -171,8 +171,8 @@ class RunnerSafetyTest(unittest.TestCase):
                 r.coverage_gate()
 
     def test_coverage_exceptions_require_actual_evidence(self):
-        for name, types in [("protocolMoveFiddy", ["address", "address", "uint256"]),
-                            ("initializeFiddy", ["address"] * 4)]:
+        for name, types in [("protocolMoveBonanza", ["address", "address", "uint256"]),
+                            ("initializeBonanza", ["address"] * 4)]:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
                 r = Campaign.__new__(Campaign)
                 r.run = Path(directory)

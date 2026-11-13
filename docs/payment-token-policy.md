@@ -1,6 +1,6 @@
 # Payment Token Policy
 
-Statics Lottery accepts governance-configured ERC-20 assets. WETH, STATICS, USDG, and any
+Bonanza accepts governance-configured ERC-20 assets. WETH, STATICS, USDG, and any
 future asset all use the same token path; native ETH is never ticket principal and receives no
 special treatment.
 
@@ -23,19 +23,19 @@ that token so one asset cannot subsidize another. Surplus classification accepts
 Payment Token addresses previously admitted through governance configuration; arbitrary token
 addresses are rejected before their balances are queried.
 
-## FIDDY as a Payment Token
+## BONANZA as a Payment Token
 
-FIDDY is not planned as a launch Payment Token, but the code supports it under extra rules:
+BONANZA is not planned as a launch Payment Token, but the code supports it under extra rules:
 
-- A FIDDY-priced configuration with a nonzero Operator share is rejected unless the current
-  integration's Operator Fee Router is an approved FIDDY consumer. Without that approval the
-  Router could receive FIDDY but never pay it out. The same check runs before opening and before
-  every Router funding attempt. A failed funding attempt leaves the FIDDY in the Lottery and stays
+- A BONANZA-priced configuration with a nonzero Operator share is rejected unless the current
+  integration's Operator Fee Router is an approved BONANZA consumer. Without that approval the
+  Router could receive BONANZA but never pay it out. The same check runs before opening and before
+  every Router funding attempt. A failed funding attempt leaves the BONANZA in the Lottery and stays
   retryable.
-- Winner claims, finalizer-tip claims and staker revenue claims in FIDDY go only to the caller
+- Winner claims, finalizer-tip claims and staker revenue claims in BONANZA go only to the caller
   or governance Treasury recipient. The permissionless Round Recipient flush goes only to its
   snapshotted recipient. The recipient's own receiver-choosing claim follows the
-  caller-or-Treasury rule, so in FIDDY it pays only the recipient or Treasury. This narrow exit
-  preserves ordinary FIDDY transfer restrictions.
-- FIDDY reward inventory, account custody and reserved FIDDY staker revenue are counted alongside
+  caller-or-Treasury rule, so in BONANZA it pays only the recipient or Treasury. This narrow exit
+  preserves ordinary BONANZA transfer restrictions.
+- BONANZA reward inventory, account custody and reserved BONANZA staker revenue are counted alongside
   ordinary Lottery liabilities for surplus purposes.
