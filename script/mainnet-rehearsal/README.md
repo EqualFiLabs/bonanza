@@ -1,6 +1,6 @@
 # Mainnet fork rehearsal
 
-Run the pushed Lottery/FIDDY candidate against a pinned Robinhood Mainnet Anvil
+Run the pushed Lottery/BONANZA candidate against a pinned Robinhood Mainnet Anvil
 fork. The runner is local-only: it verifies the loopback endpoint, Anvil instance,
 chain ID, source block and block hash before every transaction. No mainnet signer
 or deployment key is used. Existing services and occupied ports are preserved.
@@ -72,7 +72,7 @@ fixtures. These setup assumptions are retained with each run.
 - Receiver-fee, sender-fee, blocked-transfer and reentrant fixtures prove purchase
   and claim rollback. Consumer-funded and wrap-funded same-transaction staking
   attempts must revert at the lock.
-- FIDDY payment rounds cover restricted destinations, approved consumers, and
+- BONANZA payment rounds cover restricted destinations, approved consumers, and
   recovery after Router consumer permission is revoked and restored.
 - Governance scenarios preserve round snapshots, exercise pause-safe exits,
   add/replace/remove facet routes and irreversibly finalize upgrades.
@@ -82,9 +82,9 @@ fixtures. These setup assumptions are retained with each run.
 - Real Quicknet abuse checks reject a signature from the adjacent round and a
   sign-bit-corrupted full-length proof, resolve competing settlements, and retry
   the originally committed beacon after a seven-day local delay.
-- Statics dependency checks disable the approved FIDDY module while an account
+- Statics dependency checks disable the approved BONANZA module while an account
   exits, then fill another PositionNFT to its real 64-leg capacity and require a
-  first FIDDY attachment to roll back payment and account state.
+  first BONANZA attachment to roll back payment and account state.
 - A second fully bootstrapped Operator Fee Router is registered through its own
   timelock. Rotation preserves historical liabilities, disabled deposits fail
   atomically, and partial delivery succeeds after re-enabling the new Router.

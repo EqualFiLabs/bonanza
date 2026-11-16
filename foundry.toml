@@ -1,4 +1,6 @@
 [profile.default]
+bytecode_hash = "ipfs"
+cbor_metadata = true
 src = "src"
 test = "test"
 script = "script"

@@ -48,7 +48,7 @@ class Campaign(Rehearsal):
     def execute(self):
         self.setup()
         for name in ["lifecycle", "authorization", "locks_and_boosts", "hostile_assets",
-                     "fiddy_payments", "same_block_ordering", "drand_adversarial",
+                     "bonanza_payments", "same_block_ordering", "drand_adversarial",
                      "module_dependency", "router_rotation", "governance", "boundaries",
                      "multi_boost_capacity", "persistent_soak"]:
             self.reset(name)
@@ -140,8 +140,8 @@ class Campaign(Rehearsal):
         self.tx(self.borrower.functions.create(self.position.address))
         self.positions.append(self.call(self.borrower.functions.position()))
         self.seed_assets(manifest)
-        self.tx(self.lottery.functions.fundFiddyReserve(1000 * WAD), self.alice)
-        require(tuple(self.call(self.lottery.functions.fiddyReserve())[3:]) == (False, False, 0, 0), "Unsafe launch conversion defaults")
+        self.tx(self.lottery.functions.fundBonanzaReserve(1000 * WAD), self.alice)
+        require(tuple(self.call(self.lottery.functions.bonanzaReserve())[3:]) == (False, False, 0, 0), "Unsafe launch conversion defaults")
         self.result("deployment identity", "mainnet dependency hashes, source runtimes and selector routes verified")
         write(self.run / "bindings.json", {"lottery": self.lottery.address, "position": self.position.address,
             "router": self.router.address, "timelock": self.timelock.address,
@@ -167,7 +167,7 @@ class Campaign(Rehearsal):
 
     def deploy_lottery(self):
         names = ["DiamondCutFacet", "DiamondLoupeFacet", "GovernanceFacet", "LotteryFacet", "SettlementFacet", "ClaimsFacet",
-                 "RevenueFacet", "LotteryViewFacet", "FiddyTokenFacet", "FiddyStakingFacet", "FiddyViewFacet"]
+                 "RevenueFacet", "LotteryViewFacet", "BonanzaTokenFacet", "BonanzaStakingFacet", "BonanzaViewFacet"]
         facets = [self.deploy(name) for name in names]
         diamond = self.deploy("StaticsLotteryDiamond", (self.owner, facets[0].address))
         self.lottery = self.w3.eth.contract(address=diamond.address, abi=combined([self.artifact(n) for n in names]))
@@ -184,11 +184,11 @@ class Campaign(Rehearsal):
         params = (self.owner, self.guardian, self.treasury, 100, (self.drand.address, self.router.address),
                   [self.config(self.underlying), self.config(self.weth)])
         bindings = (self.underlying, self.position.address, self.operators.address, self.activation.address)
-        data = initializer.functions.initializeWithFiddy(params, bindings)._encode_transaction_data()
+        data = initializer.functions.initializeWithBonanza(params, bindings)._encode_transaction_data()
         receipt = self.tx(self.lottery.functions.diamondCut(cuts, initializer.address, HexBytes(data)))
-        require(tuple(self.call(self.lottery.functions.fiddyBindings())) == bindings, "FIDDY binding mismatch")
+        require(tuple(self.call(self.lottery.functions.bonanzaBindings())) == bindings, "BONANZA binding mismatch")
         self.initialization_evidence = {"transactionHash": plain(receipt.transactionHash),
-            "method": "LotteryInit.initializeWithFiddy", "bindingsVerified": True}
+            "method": "LotteryInit.initializeWithBonanza", "bindingsVerified": True}
         for selector, row in self.installed.items():
             require(self.call(self.lottery.functions.facetAddress(HexBytes(selector))) == row["facet"], "Selector route mismatch")
         write(self.run / "selectors.json", self.installed)
@@ -223,12 +223,12 @@ class Campaign(Rehearsal):
             "hostileAsset": "explicit local synthetic test token", "testActors": "Anvil EOAs; any inherited delegation code cleared"})
 
     def stakes(self):
-        self.tx(self.lottery.functions.setFiddyConversions(True, True, 10000 * WAD))
+        self.tx(self.lottery.functions.setBonanzaConversions(True, True, 10000 * WAD))
         for position, actor, amount in [(1, self.alice, 100 * WAD), (2, self.bob, 70 * WAD)]:
-            self.tx(self.lottery.functions.wrapFiddy(position, amount), actor)
-            self.tx(self.lottery.functions.stakeFiddy(position, amount), actor)
-        self.tx(self.lottery.functions.setFiddyBoostsEnabled(True))
-        self.tx(self.lottery.functions.registerFiddyOperator(1, self.operator_id), self.alice)
+            self.tx(self.lottery.functions.wrapBonanza(position, amount), actor)
+            self.tx(self.lottery.functions.stakeBonanza(position, amount), actor)
+        self.tx(self.lottery.functions.setBonanzaBoostsEnabled(True))
+        self.tx(self.lottery.functions.registerBonanzaOperator(1, self.operator_id), self.alice)
 
     def activate_operator(self, operator_id, actor):
         require(self.call(self.operators.functions.ownerOf(operator_id)) == actor,
@@ -253,23 +253,23 @@ class Campaign(Rehearsal):
                     return operators
         raise AssertionError("Not enough transferable Genesis Operators")
 
-    def modeled_fiddy_credit(self, position, asset, weight):
-        revenue = self.call(self.lottery.functions.fiddyAsset(asset))
-        credit = self.call(self.lottery.functions.fiddyCredit(position, asset))
+    def modeled_bonanza_credit(self, position, asset, weight):
+        revenue = self.call(self.lottery.functions.bonanzaAsset(asset))
+        credit = self.call(self.lottery.functions.bonanzaCredit(position, asset))
         delta = revenue[0] - credit[0]
         scaled = weight * delta
         whole = credit[1] + scaled // RAY
         fraction = scaled % RAY + credit[2]
         return whole + fraction // RAY, fraction % RAY, delta
 
-    def modeled_fiddy_forfeit(self, position, asset):
+    def modeled_bonanza_forfeit(self, position, asset):
         """Independent exact state transition for an invalid boost forfeiture."""
         f = self.lottery.functions
-        account = self.call(f.fiddyAccount(position))
-        total_weight = self.call(f.fiddyStaking())[0]
-        revenue = self.call(f.fiddyAsset(asset))
+        account = self.call(f.bonanzaAccount(position))
+        total_weight = self.call(f.bonanzaStaking())[0]
+        revenue = self.call(f.bonanzaAsset(asset))
         accounting = self.call(f.assetAccounting(asset))
-        whole, remainder, delta = self.modeled_fiddy_credit(position, asset, account[1])
+        whole, remainder, delta = self.modeled_bonanza_credit(position, asset, account[1])
         index, reserved, dust = revenue[:3]
         treasury = accounting[5]
         excess_weight = account[2] - account[1]
@@ -290,10 +290,10 @@ class Campaign(Rehearsal):
         return {"index": index, "reserved": reserved, "dust": dust, "treasury": treasury,
                 "claimable": whole, "remainder": remainder, "delta": delta}
 
-    def assert_modeled_fiddy_forfeit(self, position, asset, expected, claimed=False):
+    def assert_modeled_bonanza_forfeit(self, position, asset, expected, claimed=False):
         f = self.lottery.functions
-        revenue = self.call(f.fiddyAsset(asset))
-        credit = self.call(f.fiddyCredit(position, asset))
+        revenue = self.call(f.bonanzaAsset(asset))
+        credit = self.call(f.bonanzaCredit(position, asset))
         accounting = self.call(f.assetAccounting(asset))
         paid = expected["claimable"] if claimed else 0
         require(tuple(revenue[:3]) == (expected["index"], expected["reserved"] - paid,
@@ -332,9 +332,9 @@ class Campaign(Rehearsal):
             quantities.append(next_end - end)
             end = next_end
         gross, winner_amount, operator, staker, tip, treasury = allocation(
-            record[0], quantities, self.call(f.fiddyRoundConfig(round_id))[1])
+            record[0], quantities, self.call(f.bonanzaRoundConfig(round_id))[1])
         require(end == record[8] and gross == record[12], "Purchase receipts mismatch")
-        require(self.call(f.fiddyRoundRevenue(round_id)) == staker, "Purchase-time staker allocation mismatch")
+        require(self.call(f.bonanzaRoundRevenue(round_id)) == staker, "Purchase-time staker allocation mismatch")
         before = self.call(f.assetAccounting(record[0][0]))
         before_tip = self.call(f.finalizerCredit(record[0][0], self.carol))
         before_operator = self.call(f.pendingOperatorRevenue(record[2], record[0][0]))
@@ -367,7 +367,7 @@ class Campaign(Rehearsal):
         return receipt
 
     def verify_protocol_self_call(self, receipt):
-        signature = "protocolMoveFiddy(address,address,uint256)"
+        signature = "protocolMoveBonanza(address,address,uint256)"
         selector = "0x" + Web3.keccak(text=signature)[:4].hex()
         trace = self.rpc("debug_traceTransaction", [plain(receipt.transactionHash), {"tracer": "callTracer"}])
         pending, matches = [trace], []
@@ -419,7 +419,7 @@ class Campaign(Rehearsal):
                     self.call(self.lottery.functions.round(rid))[11], error="NoWinnerClaim()", check=self.financial_state)
         for position, actor in [(1, self.alice), (2, self.bob)]:
             for asset in self.assets:
-                self.tx(self.lottery.functions.claimFiddyRevenue(position, asset, actor), actor)
+                self.tx(self.lottery.functions.claimBonanzaRevenue(position, asset, actor), actor)
         self.flush()
         # Real Router distribution to the Operator holder, including canonical ownership sync.
         pending = self.call(self.router.functions.pendingOperatorRewards(self.operator_id, self.underlying))
@@ -435,11 +435,11 @@ class Campaign(Rehearsal):
             f.ticketOwner(rid, 0), f.purchaseEntryCount(rid), f.purchaseEntry(rid, 0), f.lotteryConfig(version),
             f.currentIntegration(), f.integrationAt(1), f.activeRoundCount(), f.maxActiveRounds(), f.activeRoundForConfig(version),
             f.name(), f.symbol(), f.decimals(), f.totalSupply(), f.balanceOf(self.alice), f.allowance(self.alice, self.lottery.address),
-            f.isFiddyConsumer(self.router.address), f.fiddyBindings(), f.fiddyReserve(), f.fiddyAccount(1), f.fiddyConfig(version),
-            f.fiddyRoundConfig(rid), f.fiddyOperatorAccount(self.operator_id), f.fiddyStaking(), f.fiddyRoundRevenue(rid), f.fiddyRevenueAssets()]
+            f.isBonanzaConsumer(self.router.address), f.bonanzaBindings(), f.bonanzaReserve(), f.bonanzaAccount(1), f.bonanzaConfig(version),
+            f.bonanzaRoundConfig(rid), f.bonanzaOperatorAccount(self.operator_id), f.bonanzaStaking(), f.bonanzaRoundRevenue(rid), f.bonanzaRevenueAssets()]
         for asset in self.assets:
             calls += [f.pendingOperatorRevenue(1, asset), f.assetAccounting(asset), f.finalizerCredit(asset, self.carol),
-                f.fiddyAsset(asset), f.fiddyCredit(1, asset), f.indexedFiddyRevenue(1, asset)]
+                f.bonanzaAsset(asset), f.bonanzaCredit(1, asset), f.indexedBonanzaRevenue(1, asset)]
             # Only configured assets are admitted to the base Lottery surplus view.
             if asset in [self.underlying, self.weth]:
                 calls += [f.availableTokenSurplus(asset)]
@@ -454,17 +454,17 @@ class Campaign(Rehearsal):
         privileged = [f.setGuardian(self.carol), f.setTreasuryRecipient(self.carol), f.setMaxActiveRounds(1),
             f.setIntegrationConfig((self.drand.address, self.router.address)), f.setLotteryConfigEnabled(1, False),
             f.createLotteryConfig(self.config(self.weth)), f.createRewardLotteryConfig(self.config(self.weth), (1, 1, True)),
-            f.setFiddyConversions(True, True, MAX), f.setFiddyConsumer(self.carol, True), f.setFiddyBoostsEnabled(False),
-            f.initializeFiddy(self.underlying, self.position.address, self.operators.address, self.activation.address),
+            f.setBonanzaConversions(True, True, MAX), f.setBonanzaConsumer(self.carol, True), f.setBonanzaBoostsEnabled(False),
+            f.initializeBonanza(self.underlying, self.position.address, self.operators.address, self.activation.address),
             f.finalizeProtocol(), f.diamondCut([], ZERO, b"")]
         for fn in privileged:
             self.tx(fn, self.carol, error="NotAuthority(address)", check=self.financial_state)
         self.tx(self.position.functions.approve(self.carol, 1), self.alice)
-        for fn in [f.withdrawFiddy(1, 1), f.depositFiddy(1, 1), f.wrapFiddy(1, 1), f.unwrapFiddy(1, 1, self.carol),
-                   f.stakeFiddy(1, 1), f.unstakeFiddy(1, 1), f.registerFiddyOperator(1, self.operator_id),
-                   f.removeFiddyOperator(1), f.claimFiddyRevenue(1, self.weth, self.carol), f.cleanupFiddyAccount(1)]:
+        for fn in [f.withdrawBonanza(1, 1), f.depositBonanza(1, 1), f.wrapBonanza(1, 1), f.unwrapBonanza(1, 1, self.carol),
+                   f.stakeBonanza(1, 1), f.unstakeBonanza(1, 1), f.registerBonanzaOperator(1, self.operator_id),
+                   f.removeBonanzaOperator(1), f.claimBonanzaRevenue(1, self.weth, self.carol), f.cleanupBonanzaAccount(1)]:
             self.tx(fn, self.carol, error="NotPositionOwner()", check=self.financial_state)
-        self.tx(f.protocolMoveFiddy(self.lottery.address, self.carol, 1), self.carol,
+        self.tx(f.protocolMoveBonanza(self.lottery.address, self.carol, 1), self.carol,
                 error="OnlyProtocol()", check=self.financial_state)
         self.tx(f.setPaused(True), self.carol, error="NotGuardian(address)")
         self.result("authority and approvals", "NFT approval never grants financial control")
@@ -474,40 +474,40 @@ class Campaign(Rehearsal):
         f = self.lottery.functions
         version = self.new_config(self.weth)
         rid = self.open(version, 10)
-        nonce = self.call(f.fiddyAccount(1))[6]
-        self.tx(f.checkpointFiddyAccount(1), self.carol)
-        require(self.call(f.fiddyAccount(1))[6] == nonce, "Third party checkpoint changed nonce")
-        self.tx(f.unstakeFiddy(1, 1), self.alice, error="StakeLocked(uint256)", check=self.financial_state)
+        nonce = self.call(f.bonanzaAccount(1))[6]
+        self.tx(f.checkpointBonanzaAccount(1), self.carol)
+        require(self.call(f.bonanzaAccount(1))[6] == nonce, "Third party checkpoint changed nonce")
+        self.tx(f.unstakeBonanza(1, 1), self.alice, error="StakeLocked(uint256)", check=self.financial_state)
         self.tx(self.operators.functions.transferFrom(self.alice, self.bob, self.operator_id), self.alice)
-        self.tx(f.registerFiddyOperator(2, self.operator_id), self.bob)
-        require(not self.call(f.fiddyAccount(1))[7], "Stale registration retained")
-        require(self.call(f.fiddyAccount(1))[6] == nonce + 1, "Forfeit nonce missing")
+        self.tx(f.registerBonanzaOperator(2, self.operator_id), self.bob)
+        require(not self.call(f.bonanzaAccount(1))[7], "Stale registration retained")
+        require(self.call(f.bonanzaAccount(1))[6] == nonce + 1, "Forfeit nonce missing")
         self.tx(self.position.functions.transferFrom(self.bob, self.carol, 2), self.bob)
-        self.tx(f.checkpointFiddyAccount(2), self.alice)
-        require(self.call(f.fiddyAccount(2))[2] == self.call(f.fiddyAccount(2))[1], "Position sale retained boost")
+        self.tx(f.checkpointBonanzaAccount(2), self.alice)
+        require(self.call(f.bonanzaAccount(2))[2] == self.call(f.bonanzaAccount(2))[1], "Position sale retained boost")
         self.settle(rid)
         self.claim_round(rid)
         self.advance(86400)
-        self.tx(f.wrapFiddy(1, 100 * WAD), self.alice)
-        self.tx(f.stakeFiddy(1, 100 * WAD), self.alice)
-        start = self.call(f.fiddyAccount(1))[5]
+        self.tx(f.wrapBonanza(1, 100 * WAD), self.alice)
+        self.tx(f.stakeBonanza(1, 100 * WAD), self.alice)
+        start = self.call(f.bonanzaAccount(1))[5]
         require(abs(self.w3.eth.get_block("latest").timestamp - start - 43200) <= 2, "Weighted top-up lock mismatch")
-        self.tx(f.unstakeFiddy(1, 1), self.alice, error="StakeLocked(uint256)", check=self.financial_state)
+        self.tx(f.unstakeBonanza(1, 1), self.alice, error="StakeLocked(uint256)", check=self.financial_state)
         self.advance(43201)
-        self.tx(f.unstakeFiddy(1, 200 * WAD), self.alice)
-        self.tx(f.removeFiddyOperator(1), self.alice)
-        self.tx(f.withdrawFiddy(1, WAD), self.alice)
-        self.tx(f.depositFiddy(1, WAD), self.alice)
+        self.tx(f.unstakeBonanza(1, 200 * WAD), self.alice)
+        self.tx(f.removeBonanzaOperator(1), self.alice)
+        self.tx(f.withdrawBonanza(1, WAD), self.alice)
+        self.tx(f.depositBonanza(1, WAD), self.alice)
         for i in [1, 2]:
             actor = self.call(self.position.functions.ownerOf(i))
-            account = self.call(f.fiddyAccount(i))
+            account = self.call(f.bonanzaAccount(i))
             if account[1]:
-                self.tx(f.unstakeFiddy(i, account[1]), actor)
+                self.tx(f.unstakeBonanza(i, account[1]), actor)
             for asset in self.assets:
-                self.tx(f.claimFiddyRevenue(i, asset, actor), actor)
-            amount = self.call(f.fiddyAccount(i))[0]
-            self.tx(f.unwrapFiddy(i, amount, actor), actor)
-            self.tx(f.cleanupFiddyAccount(i), actor)
+                self.tx(f.claimBonanzaRevenue(i, asset, actor), actor)
+            amount = self.call(f.bonanzaAccount(i))[0]
+            self.tx(f.unwrapBonanza(i, amount, actor), actor)
+            self.tx(f.cleanupBonanzaAccount(i), actor)
             require(self.call(self.position.functions.isPositionClosable(i)), "External leg did not detach")
         self.flush()
         self.result("lock and ownership transitions", "weighted reset, takeover, forfeiture, nonce, exit and detach")
@@ -528,15 +528,15 @@ class Campaign(Rehearsal):
         self.settle(rid)
         winner = self.call(f.round(rid))[11]
         self.tx(f.claimWinner(rid, winner), winner, error="Error(string)", check=self.financial_state)
-        self.tx(f.claimFiddyRevenue(1, self.hostile.address, self.alice), self.alice, error="Error(string)", check=self.financial_state)
+        self.tx(f.claimBonanzaRevenue(1, self.hostile.address, self.alice), self.alice, error="Error(string)", check=self.financial_state)
         self.tx(self.hostile.functions.configure(0, ZERO, b""))
         self.claim_round(rid)
-        self.tx(f.claimFiddyRevenue(1, self.hostile.address, self.alice), self.alice)
+        self.tx(f.claimBonanzaRevenue(1, self.hostile.address, self.alice), self.alice)
         # Both loan sources fail atomically on the 24-hour stake lock.
         plain_version = self.new_config(self.weth, rewards=None)
-        self.tx(f.wrapFiddy(1, WAD), self.alice)
-        self.tx(f.withdrawFiddy(1, WAD), self.alice)
-        self.tx(f.setFiddyConsumer(self.borrower.address, True))
+        self.tx(f.wrapBonanza(1, WAD), self.alice)
+        self.tx(f.withdrawBonanza(1, WAD), self.alice)
+        self.tx(f.setBonanzaConsumer(self.borrower.address, True))
         self.tx(f.approve(self.borrower.address, WAD), self.alice)
         self.tx(self.token(self.underlying).functions.approve(self.borrower.address, WAD), self.alice)
         for wrap, payment in [(False, self.weth), (True, self.underlying)]:
@@ -545,31 +545,31 @@ class Campaign(Rehearsal):
                     error="StakeLocked(uint256)", check=self.financial_state)
         self.result("hostile callbacks and flash funding", "mined reverts with exact financial rollback")
 
-    def fiddy_payments(self):
+    def bonanza_payments(self):
         self.stakes()
         f = self.lottery.functions
-        self.tx(f.wrapFiddy(1, 100 * WAD), self.alice)
-        self.tx(f.withdrawFiddy(1, 100 * WAD), self.alice)
+        self.tx(f.wrapBonanza(1, 100 * WAD), self.alice)
+        self.tx(f.withdrawBonanza(1, 100 * WAD), self.alice)
         self.tx(f.transfer(self.bob, 1), self.alice, error="TransferRestricted()", check=self.financial_state)
         self.tx(f.createLotteryConfig(self.config(self.lottery.address)), error="OperatorRouterUnavailable(address,address)")
-        self.tx(f.setFiddyConsumer(self.router.address, True))
+        self.tx(f.setBonanzaConsumer(self.router.address, True))
         version = self.new_config(self.lottery.address, rewards=(0, 5000, False))
         rid = self.open(version, 2, position=0)
         self.tx(f.buyTickets(rid, 8), self.alice)
         self.settle(rid)
         self.tx(f.claimWinner(rid, self.bob), self.alice, error="ReceiverRestricted(address)", check=self.financial_state)
         self.verify_protocol_self_call(self.claim_round(rid))
-        self.tx(f.claimFiddyRevenue(1, self.lottery.address, self.bob), self.alice,
+        self.tx(f.claimBonanzaRevenue(1, self.lottery.address, self.bob), self.alice,
                 error="ReceiverRestricted(address)", check=self.financial_state)
-        self.tx(f.claimFiddyRevenue(1, self.lottery.address, self.alice), self.alice)
-        self.tx(f.setFiddyConsumer(self.router.address, False))
+        self.tx(f.claimBonanzaRevenue(1, self.lottery.address, self.alice), self.alice)
+        self.tx(f.setBonanzaConsumer(self.router.address, False))
         pending = self.call(f.pendingOperatorRevenue(1, self.lottery.address))
         self.tx(f.flushOperatorRevenue(1, self.lottery.address, pending), self.carol,
                 error="OperatorRouterUnavailable(address,address)", check=self.financial_state)
-        self.tx(f.setFiddyConsumer(self.router.address, True))
+        self.tx(f.setBonanzaConsumer(self.router.address, True))
         self.flush()
         # Approved endpoints can redistribute; allowances alone cannot bypass movement policy.
-        self.tx(f.setFiddyConsumer(self.bob, True))
+        self.tx(f.setBonanzaConsumer(self.bob, True))
         self.tx(f.transfer(self.bob, 100), self.alice)
         self.tx(f.approve(self.carol, 50), self.bob)
         self.tx(f.transferFrom(self.bob, self.carol, 50), self.carol)
@@ -577,43 +577,43 @@ class Campaign(Rehearsal):
 
     def same_block_ordering(self):
         f = self.lottery.functions
-        self.tx(f.setFiddyConversions(True, True, 10000 * WAD))
-        self.tx(f.wrapFiddy(1, 100 * WAD), self.alice)
+        self.tx(f.setBonanzaConversions(True, True, 10000 * WAD))
+        self.tx(f.wrapBonanza(1, 100 * WAD), self.alice)
         version = self.new_config(self.weth, rewards=(0, 5000, False), operator=0)
         rid = self.open(version, 1)
         share = self.config(self.weth, operator=0)[1] * 5000 * 5000 // (10000 * 10000)
 
         branch = self.rpc("evm_snapshot", [])
-        reserved = self.call(f.fiddyAsset(self.weth))[1]
+        reserved = self.call(f.bonanzaAsset(self.weth))[1]
         receipts = self.same_block([
-            {"fn": f.stakeFiddy(1, 100 * WAD), "sender": self.alice},
+            {"fn": f.stakeBonanza(1, 100 * WAD), "sender": self.alice},
             {"fn": f.buyTicketsForPosition(rid, 1, 1), "sender": self.alice},
         ])
         require(receipts[0].blockNumber == receipts[1].blockNumber, "Stake/purchase ordering split")
-        require(self.call(f.fiddyAsset(self.weth))[1] - reserved == share,
+        require(self.call(f.bonanzaAsset(self.weth))[1] - reserved == share,
                 "Stake-before-purchase did not earn the purchase share")
 
         require(self.rpc("evm_revert", [branch]), "Ordering branch revert failed")
         treasury = self.call(f.assetAccounting(self.weth))[5]
-        reserved = self.call(f.fiddyAsset(self.weth))[1]
+        reserved = self.call(f.bonanzaAsset(self.weth))[1]
         receipts = self.same_block([
             {"fn": f.buyTicketsForPosition(rid, 1, 1), "sender": self.alice},
-            {"fn": f.stakeFiddy(1, 100 * WAD), "sender": self.alice},
+            {"fn": f.stakeBonanza(1, 100 * WAD), "sender": self.alice},
         ])
-        require(self.call(f.fiddyAsset(self.weth))[1] == reserved,
+        require(self.call(f.bonanzaAsset(self.weth))[1] == reserved,
                 "Purchase-before-stake paid retrospective revenue")
         require(self.call(f.assetAccounting(self.weth))[5] - treasury == share,
                 "Zero-weight purchase share did not reach Treasury")
 
         # Book a claim, then prove transaction order controls old-owner authority within one block.
         self.tx(f.buyTicketsForPosition(rid, 1, 1), self.alice)
-        earned = self.call(f.indexedFiddyRevenue(1, self.weth))[0]
+        earned = self.call(f.indexedBonanzaRevenue(1, self.weth))[0]
         require(earned > 0, "No revenue available for claim ordering")
         branch = self.rpc("evm_snapshot", [])
         balance = self.call(self.token(self.weth).functions.balanceOf(self.alice))
         self.same_block([
             {"fn": self.position.functions.transferFrom(self.alice, self.bob, 1), "sender": self.alice},
-            {"fn": f.claimFiddyRevenue(1, self.weth, self.alice), "sender": self.alice,
+            {"fn": f.claimBonanzaRevenue(1, self.weth, self.alice), "sender": self.alice,
              "error": "NotPositionOwner()"},
         ])
         require(self.call(self.position.functions.ownerOf(1)) == self.bob, "Position transfer did not win ordering")
@@ -623,7 +623,7 @@ class Campaign(Rehearsal):
         require(self.rpc("evm_revert", [branch]), "Claim ordering branch revert failed")
         balance = self.call(self.token(self.weth).functions.balanceOf(self.alice))
         self.same_block([
-            {"fn": f.claimFiddyRevenue(1, self.weth, self.alice), "sender": self.alice},
+            {"fn": f.claimBonanzaRevenue(1, self.weth, self.alice), "sender": self.alice},
             {"fn": self.position.functions.transferFrom(self.alice, self.bob, 1), "sender": self.alice},
         ])
         require(self.call(self.token(self.weth).functions.balanceOf(self.alice)) - balance == earned,
@@ -713,12 +713,12 @@ class Campaign(Rehearsal):
         module_type = Web3.keccak(text="statics.lottery.fiddy.account.v1")
         self.tx(self.position.functions.setExternalModule(self.lottery.address, module_type, False))
         self.advance(86401)
-        account = self.call(f.fiddyAccount(1))
-        self.tx(f.unstakeFiddy(1, account[1]), self.alice)
-        self.tx(f.claimFiddyRevenue(1, self.weth, self.alice), self.alice)
-        account = self.call(f.fiddyAccount(1))
-        self.tx(f.unwrapFiddy(1, account[0], self.alice), self.alice)
-        self.tx(f.cleanupFiddyAccount(1), self.alice)
+        account = self.call(f.bonanzaAccount(1))
+        self.tx(f.unstakeBonanza(1, account[1]), self.alice)
+        self.tx(f.claimBonanzaRevenue(1, self.weth, self.alice), self.alice)
+        account = self.call(f.bonanzaAccount(1))
+        self.tx(f.unwrapBonanza(1, account[0], self.alice), self.alice)
+        self.tx(f.cleanupBonanzaAccount(1), self.alice)
         require(self.call(self.position.functions.externalLegCount(1)) == 0,
                 "Disabled module blocked an existing account exit")
 
@@ -733,10 +733,10 @@ class Campaign(Rehearsal):
         self.tx(filler.functions.fill(self.position.address, 3, filler_type, capacity), gas=20_000_000)
         require(self.call(self.position.functions.externalLegCount(3)) == capacity,
                 "Capacity fixture did not fill the actual PositionNFT")
-        self.tx(f.wrapFiddy(3, WAD), self.carol,
+        self.tx(f.wrapBonanza(3, WAD), self.carol,
                 error="ExternalLegCapacityReached(uint256)", check=self.financial_state)
-        require(self.call(f.fiddyAccount(3))[0] == 0 and not self.call(f.fiddyAccount(3))[8],
-                "Failed attachment leaked FIDDY account state")
+        require(self.call(f.bonanzaAccount(3))[0] == 0 and not self.call(f.bonanzaAccount(3))[8],
+                "Failed attachment leaked BONANZA account state")
         self.result("Statics module liveness", "disabled-module exits and capacity attachment rollback")
 
     def set_router_asset_enabled(self, timelock, router, asset, enabled, salt_label):
@@ -812,11 +812,11 @@ class Campaign(Rehearsal):
         require(self.call(f.round(rid))[0:3] == immutable, "Open round snapshot changed")
         self.tx(f.setPaused(True), self.bob)
         self.tx(f.buyTicketsForPosition(rid, 1, 1), self.alice, error="ProtocolPaused()", check=self.financial_state)
-        self.tx(f.stakeFiddy(1, 1), self.alice, error="ProtocolPaused()", check=self.financial_state)
+        self.tx(f.stakeBonanza(1, 1), self.alice, error="ProtocolPaused()", check=self.financial_state)
         self.tx(f.setPaused(False), self.bob, error="UnpauseRequiresAuthority(address)")
         self.settle(rid)
         self.claim_round(rid)
-        self.tx(f.claimFiddyRevenue(1, self.weth, self.alice), self.alice)
+        self.tx(f.claimBonanzaRevenue(1, self.weth, self.alice), self.alice)
         self.flush()
         self.tx(f.setPaused(False))
         helper = self.deploy("RehearsalFacet")
@@ -834,13 +834,13 @@ class Campaign(Rehearsal):
 
     def boundaries(self):
         f = self.lottery.functions
-        self.tx(f.initializeFiddy(self.underlying, self.position.address, self.operators.address, self.activation.address),
+        self.tx(f.initializeBonanza(self.underlying, self.position.address, self.operators.address, self.activation.address),
                 error="AlreadyInitialized()")
-        self.tx(f.wrapFiddy(1, 1), self.alice, error="ConversionDisabled()", check=self.financial_state)
-        self.tx(f.setFiddyConversions(True, True, 1))
-        self.tx(f.wrapFiddy(1, 2), self.alice, error="WrapCapacityExceeded()", check=self.financial_state)
-        self.tx(f.wrapFiddy(1, 1), self.alice)
-        self.tx(f.unwrapFiddy(1, 1, self.alice), self.alice)
+        self.tx(f.wrapBonanza(1, 1), self.alice, error="ConversionDisabled()", check=self.financial_state)
+        self.tx(f.setBonanzaConversions(True, True, 1))
+        self.tx(f.wrapBonanza(1, 2), self.alice, error="WrapCapacityExceeded()", check=self.financial_state)
+        self.tx(f.wrapBonanza(1, 1), self.alice)
+        self.tx(f.unwrapBonanza(1, 1, self.alice), self.alice)
         self.tx(f.createRewardLotteryConfig(self.config(self.weth), (1, 9000, True)), error="InvalidRewardsConfig()")
         version = self.new_config(self.weth, rewards=(2000 * WAD, 5000, True))
         self.tx(f.setMaxActiveRounds(0))
@@ -848,10 +848,10 @@ class Campaign(Rehearsal):
         self.tx(f.setMaxActiveRounds(100))
         self.tx(f.openRound(version, 1), self.alice, error="PositionRequired()", check=self.financial_state)
         rid = self.open(version, 1)
-        require(self.call(f.fiddyReserve())[0] == 0, "Inventory exhaustion not reached")
-        balance = self.call(f.fiddyAccount(1))[0]
+        require(self.call(f.bonanzaReserve())[0] == 0, "Inventory exhaustion not reached")
+        balance = self.call(f.bonanzaAccount(1))[0]
         self.tx(f.buyTicketsForPosition(rid, 1, 1), self.alice)
-        require(self.call(f.fiddyAccount(1))[0] == balance, "Unfunded rewards issued")
+        require(self.call(f.bonanzaAccount(1))[0] == balance, "Unfunded rewards issued")
         self.tx(f.openRoundForPosition(version, 1, 1), self.alice, error="ConfigAlreadyActive(uint64,uint256)", check=self.financial_state)
         self.tx(f.buyTicketsForPosition(rid, 9, 1), self.alice, error="InvalidTicketQuantity()", check=self.financial_state)
         self.tx(f.buyTicketsForPosition(rid, 0, 1), self.alice, error="InvalidTicketQuantity()", check=self.financial_state)
@@ -899,8 +899,8 @@ class Campaign(Rehearsal):
         for position in active_positions[2:]:
             actor = self.call(self.position.functions.ownerOf(position))
             amount = (20 + position) * WAD
-            self.tx(f.wrapFiddy(position, amount), actor)
-            self.tx(f.stakeFiddy(position, amount // 2), actor)
+            self.tx(f.wrapBonanza(position, amount), actor)
+            self.tx(f.stakeBonanza(position, amount // 2), actor)
         operator_b, operator_c = self.transferable_operators(2)
         self.acquire_operator(operator_b, self.bob)
         self.acquire_operator(operator_c, self.carol)
@@ -908,11 +908,11 @@ class Campaign(Rehearsal):
 
         versions = [self.new_config(asset) for asset in [self.underlying, self.weth]]
         opened = [self.open(v, 1, i + 1, actors[i]) for i, v in enumerate(versions)]
-        inventory = self.call(f.fiddyReserve())[0]
+        inventory = self.call(f.bonanzaReserve())[0]
         depletion = self.new_config(self.weth, rewards=(inventory, 5000, True), count=1)
         opened.append(self.open(depletion, 1, active_positions[0], self.alice))
-        require(self.call(f.fiddyReserve())[0] == 0, "Reserve depletion setup left inventory")
-        self.tx(f.fundFiddyReserve(25 * WAD), self.alice)
+        require(self.call(f.bonanzaReserve())[0] == 0, "Reserve depletion setup left inventory")
+        self.tx(f.fundBonanzaReserve(25 * WAD), self.alice)
 
         base_seed = self.environment["seed"]
         seeds = [base_seed, base_seed ^ 0x9E3779B9, base_seed + 0x85EBCA6B]
@@ -928,7 +928,7 @@ class Campaign(Rehearsal):
                 opened = []
                 self.advance(86401)
                 before_count = self.counter
-                self.tx(f.unstakeFiddy(3, 1), self.call(self.position.functions.ownerOf(3)))
+                self.tx(f.unstakeBonanza(3, 1), self.call(self.position.functions.ownerOf(3)))
                 self.reconcile()
                 action_log.append({"phase": phase, "seed": seed, "step": -1, "mode": 7,
                                    "action": "unstake",
@@ -940,7 +940,7 @@ class Campaign(Rehearsal):
                 actor = self.call(self.position.functions.ownerOf(position))
                 if mode == 0:
                     if rounds_closed:
-                        self.tx(f.checkpointFiddyAccount(position), self.carol)
+                        self.tx(f.checkpointBonanzaAccount(position), self.carol)
                         action = "checkpoint"
                     else:
                         rid = rng.choice(opened)
@@ -953,13 +953,13 @@ class Campaign(Rehearsal):
                             self.tx(f.buyTicketsForPosition(rid, 1, position), actor)
                         action = "round"
                 elif mode == 1:
-                    self.tx(f.checkpointFiddyAccount(position), self.carol)
+                    self.tx(f.checkpointBonanzaAccount(position), self.carol)
                     action = "checkpoint"
                 elif mode == 2:
-                    self.tx(f.claimFiddyRevenue(position, rng.choice(self.assets[:2]), actor), actor)
+                    self.tx(f.claimBonanzaRevenue(position, rng.choice(self.assets[:2]), actor), actor)
                     action = "claim"
                 elif mode == 3:
-                    self.tx(f.wrapFiddy(position, rng.randrange(1, 10**15)), actor)
+                    self.tx(f.wrapBonanza(position, rng.randrange(1, 10**15)), actor)
                     action = "wrap"
                 elif mode == 4:
                     recipient = rng.choice([candidate for candidate in actors if candidate != actor])
@@ -970,22 +970,22 @@ class Campaign(Rehearsal):
                     self.tx(f.setPaused(False))
                     action = "pause"
                 elif mode == 6:
-                    account = self.call(f.fiddyAccount(position))
+                    account = self.call(f.bonanzaAccount(position))
                     available = account[0] - account[1]
                     if available == 0:
                         amount = rng.randrange(1, 10**15)
-                        self.tx(f.wrapFiddy(position, amount), actor)
+                        self.tx(f.wrapBonanza(position, amount), actor)
                         available = amount
-                    self.tx(f.stakeFiddy(position, rng.randrange(1, min(available, 10**15) + 1)), actor)
+                    self.tx(f.stakeBonanza(position, rng.randrange(1, min(available, 10**15) + 1)), actor)
                     action = "stake"
                 elif mode == 7:
-                    account = self.call(f.fiddyAccount(position))
+                    account = self.call(f.bonanzaAccount(position))
                     if account[1] and self.w3.eth.get_block("latest").timestamp >= account[5] + 86400:
                         amount = rng.randrange(1, min(account[1], 10**15) + 1)
-                        self.tx(f.unstakeFiddy(position, amount), actor)
+                        self.tx(f.unstakeBonanza(position, amount), actor)
                         action = "unstake"
                     else:
-                        self.tx(f.checkpointFiddyAccount(position), self.carol)
+                        self.tx(f.checkpointBonanzaAccount(position), self.carol)
                         action = "checkpoint"
                 elif mode == 8:
                     operator_id = rng.choice(operators)
@@ -999,20 +999,20 @@ class Campaign(Rehearsal):
                         if self.call(self.token(self.underlying).functions.balanceOf(next_owner)) >= cost:
                             self.tx(self.operators.functions.transferFrom(current, next_owner, operator_id), current)
                             self.activate_operator(operator_id, next_owner)
-                            self.tx(f.registerFiddyOperator(target, operator_id), next_owner)
+                            self.tx(f.registerBonanzaOperator(target, operator_id), next_owner)
                             action = "operator-activation-registration"
                         else:
-                            self.tx(f.checkpointFiddyAccount(target), self.carol)
+                            self.tx(f.checkpointBonanzaAccount(target), self.carol)
                             action = "checkpoint"
                     else:
-                        self.tx(f.checkpointFiddyAccount(position), self.carol)
+                        self.tx(f.checkpointBonanzaAccount(position), self.carol)
                         action = "checkpoint"
                 elif mode == 9:
-                    reserve = self.call(f.fiddyReserve())[0]
+                    reserve = self.call(f.bonanzaReserve())[0]
                     if rounds_closed:
                         funder = max(actors, key=lambda candidate: self.call(
                             self.token(self.underlying).functions.balanceOf(candidate)))
-                        self.tx(f.fundFiddyReserve(rng.randrange(1, 6) * WAD), funder)
+                        self.tx(f.fundBonanzaReserve(rng.randrange(1, 6) * WAD), funder)
                         action = "reserve-refill"
                     elif reserve:
                         retired = rng.choice(opened)
@@ -1032,12 +1032,12 @@ class Campaign(Rehearsal):
                         version = self.new_config(rng.choice(self.assets[:2]),
                                                   rewards=(reserve, 5000, True), count=1)
                         opened.append(self.open(version, 1, position, actor))
-                        require(self.call(f.fiddyReserve())[0] == 0, "Random reserve depletion left inventory")
+                        require(self.call(f.bonanzaReserve())[0] == 0, "Random reserve depletion left inventory")
                         action = "reserve-depletion"
                     else:
                         funder = max(actors, key=lambda candidate: self.call(
                             self.token(self.underlying).functions.balanceOf(candidate)))
-                        self.tx(f.fundFiddyReserve(rng.randrange(1, 6) * WAD), funder)
+                        self.tx(f.fundBonanzaReserve(rng.randrange(1, 6) * WAD), funder)
                         action = "reserve-refill"
                 elif mode == 10:
                     if rounds_closed:
@@ -1050,13 +1050,13 @@ class Campaign(Rehearsal):
                             action = "time-advance"
                         else:
                             action = "checkpoint"
-                    self.tx(f.checkpointFiddyAccount(position), self.carol)
+                    self.tx(f.checkpointBonanzaAccount(position), self.carol)
                 else:
-                    if self.call(f.fiddyAccount(position))[7]:
-                        self.tx(f.removeFiddyOperator(position), actor)
+                    if self.call(f.bonanzaAccount(position))[7]:
+                        self.tx(f.removeBonanzaOperator(position), actor)
                         action = "operator-remove"
                     else:
-                        self.tx(f.checkpointFiddyAccount(position), self.carol)
+                        self.tx(f.checkpointBonanzaAccount(position), self.carol)
                         action = "checkpoint"
                 self.reconcile()
                 require(self.counter > before_count, "Persistent soak choice performed no transaction")
@@ -1073,22 +1073,22 @@ class Campaign(Rehearsal):
         self.advance(86401)
         for position in active_positions:
             actor = self.call(self.position.functions.ownerOf(position))
-            account = self.call(f.fiddyAccount(position))
+            account = self.call(f.bonanzaAccount(position))
             if account[1]:
-                self.tx(f.unstakeFiddy(position, account[1]), actor)
-            self.tx(f.removeFiddyOperator(position), actor)
+                self.tx(f.unstakeBonanza(position, account[1]), actor)
+            self.tx(f.removeBonanzaOperator(position), actor)
             for asset in self.assets:
-                self.tx(f.claimFiddyRevenue(position, asset, actor), actor)
-            balance = self.call(f.fiddyAccount(position))[0]
+                self.tx(f.claimBonanzaRevenue(position, asset, actor), actor)
+            balance = self.call(f.bonanzaAccount(position))[0]
             if balance:
-                self.tx(f.unwrapFiddy(position, balance, actor), actor)
-            self.tx(f.cleanupFiddyAccount(position), actor)
+                self.tx(f.unwrapBonanza(position, balance, actor), actor)
+            self.tx(f.cleanupBonanzaAccount(position), actor)
             require(self.call(self.position.functions.externalLegCount(position)) == 0, "Soak leg remains")
         self.flush()
         require(self.call(f.activeRoundCount()) == 0, "Soak active rounds remain")
         for asset in self.assets:
             require(sum(self.call(f.assetAccounting(asset))) == 0, "Soak liabilities remain")
-            require(self.call(f.fiddyAsset(asset))[1] == 0, "Soak staker liability remains")
+            require(self.call(f.bonanzaAsset(asset))[1] == 0, "Soak staker liability remains")
         write(self.run / "soak-actions.json", action_log)
         action_counts = {}
         for row in action_log:
@@ -1110,10 +1110,10 @@ class Campaign(Rehearsal):
         operator_b, operator_c = self.transferable_operators(2)
         self.acquire_operator(operator_b, self.bob)
         self.acquire_operator(operator_c, self.carol)
-        self.tx(f.wrapFiddy(3, 60 * WAD), self.carol)
-        self.tx(f.stakeFiddy(3, 60 * WAD), self.carol)
-        self.tx(f.registerFiddyOperator(2, operator_b), self.bob)
-        self.tx(f.registerFiddyOperator(3, operator_c), self.carol)
+        self.tx(f.wrapBonanza(3, 60 * WAD), self.carol)
+        self.tx(f.stakeBonanza(3, 60 * WAD), self.carol)
+        self.tx(f.registerBonanzaOperator(2, operator_b), self.bob)
+        self.tx(f.registerBonanzaOperator(3, operator_c), self.carol)
         listed = []
         # Each distinct token has its own real transfer, purchase and revenue index.
         for index in range(64):
@@ -1124,10 +1124,10 @@ class Campaign(Rehearsal):
                                       operator=0, tip=0, duration=2 * 86400)
             rid = self.open(version, 1, position=0)
             listed.append((token, rid))
-            require(self.call(f.fiddyAsset(token.address))[1] == 500, "Capacity fixture revenue not booked")
+            require(self.call(f.bonanzaAsset(token.address))[1] == 500, "Capacity fixture revenue not booked")
             if (index + 1) % 16 == 0:
                 print(f"Revenue capacity: {index + 1}/64 funded assets", flush=True)
-        require(len(self.call(f.fiddyRevenueAssets())) == 64, "Revenue asset count mismatch")
+        require(len(self.call(f.bonanzaRevenueAssets())) == 64, "Revenue asset count mismatch")
         extra = self.deploy("RehearsalToken")
         before = self.call(f.latestLotteryConfigVersion())
         self.tx(f.createRewardLotteryConfig(self.config(extra.address, operator=0), (0, 10000, False)),
@@ -1139,70 +1139,70 @@ class Campaign(Rehearsal):
         self.tx(self.operators.functions.transferFrom(self.bob, self.carol, operator_b), self.bob)
         self.tx(self.operators.functions.transferFrom(self.carol, self.alice, operator_c), self.carol)
 
-        expected_one = {token.address: self.modeled_fiddy_forfeit(1, token.address)
+        expected_one = {token.address: self.modeled_bonanza_forfeit(1, token.address)
                         for token, _ in listed}
-        checkpoint = self.tx(f.checkpointFiddyAccount(1), self.carol)
+        checkpoint = self.tx(f.checkpointBonanzaAccount(1), self.carol)
         for token, _ in listed:
-            self.assert_modeled_fiddy_forfeit(1, token.address, expected_one[token.address])
+            self.assert_modeled_bonanza_forfeit(1, token.address, expected_one[token.address])
 
-        expected_two = {token.address: self.modeled_fiddy_forfeit(2, token.address)
+        expected_two = {token.address: self.modeled_bonanza_forfeit(2, token.address)
                         for token, _ in listed}
         claim_token = listed[0][0]
         balance = self.call(claim_token.functions.balanceOf(self.bob))
-        claim = self.tx(f.claimFiddyRevenue(2, claim_token.address, self.bob), self.bob)
+        claim = self.tx(f.claimBonanzaRevenue(2, claim_token.address, self.bob), self.bob)
         require(self.call(claim_token.functions.balanceOf(self.bob)) - balance ==
                 expected_two[claim_token.address]["claimable"],
                 "Claim-order entitlement mismatch")
         for token, _ in listed:
-            self.assert_modeled_fiddy_forfeit(2, token.address, expected_two[token.address],
+            self.assert_modeled_bonanza_forfeit(2, token.address, expected_two[token.address],
                                               claimed=token.address == claim_token.address)
 
-        expected_three = {token.address: self.modeled_fiddy_forfeit(3, token.address)
+        expected_three = {token.address: self.modeled_bonanza_forfeit(3, token.address)
                           for token, _ in listed}
         self.advance(86401)
-        unstake = self.tx(f.unstakeFiddy(3, 1), self.carol)
+        unstake = self.tx(f.unstakeBonanza(3, 1), self.carol)
         for token, _ in listed:
-            self.assert_modeled_fiddy_forfeit(3, token.address, expected_three[token.address])
+            self.assert_modeled_bonanza_forfeit(3, token.address, expected_three[token.address])
 
         self.activate_operator(self.operator_id, self.bob)
-        self.tx(f.registerFiddyOperator(2, self.operator_id), self.bob)
+        self.tx(f.registerBonanzaOperator(2, self.operator_id), self.bob)
         for _, rid in listed:
             self.tx(f.buyTicketsForPosition(rid, 1, 1), self.alice)
         self.tx(self.operators.functions.transferFrom(self.bob, self.alice, self.operator_id), self.bob)
         self.activate_operator(self.operator_id, self.alice)
-        takeover_expected = {token.address: self.modeled_fiddy_forfeit(2, token.address)
+        takeover_expected = {token.address: self.modeled_bonanza_forfeit(2, token.address)
                              for token, _ in listed}
         require(all(expected["delta"] > 0 for expected in takeover_expected.values()),
                 "Takeover fixture has no fresh boosted accrual")
-        takeover = self.tx(f.registerFiddyOperator(1, self.operator_id), self.alice)
+        takeover = self.tx(f.registerBonanzaOperator(1, self.operator_id), self.alice)
         for token, _ in listed:
-            self.assert_modeled_fiddy_forfeit(2, token.address, takeover_expected[token.address])
+            self.assert_modeled_bonanza_forfeit(2, token.address, takeover_expected[token.address])
 
-        remaining = self.call(f.fiddyAccount(3))[1]
-        self.tx(f.unstakeFiddy(3, remaining), self.carol)
+        remaining = self.call(f.bonanzaAccount(3))[1]
+        self.tx(f.unstakeBonanza(3, remaining), self.carol)
         for token, _ in listed:
-            account = self.call(f.fiddyAccount(3))
-            expected = self.modeled_fiddy_credit(3, token.address, account[2])
+            account = self.call(f.bonanzaAccount(3))
+            expected = self.modeled_bonanza_credit(3, token.address, account[2])
             before_balance = self.call(token.functions.balanceOf(self.carol))
-            self.tx(f.claimFiddyRevenue(3, token.address, self.carol), self.carol)
+            self.tx(f.claimBonanzaRevenue(3, token.address, self.carol), self.carol)
             require(self.call(token.functions.balanceOf(self.carol)) - before_balance == expected[0],
                     "Cleanup claim paid the wrong individual entitlement")
-            require(self.call(f.fiddyCredit(3, token.address))[2] == expected[1],
+            require(self.call(f.bonanzaCredit(3, token.address))[2] == expected[1],
                     "Cleanup claim changed the modeled remainder")
-        balance = self.call(f.fiddyAccount(3))[0]
-        self.tx(f.unwrapFiddy(3, balance, self.carol), self.carol)
-        cleanup = self.tx(f.cleanupFiddyAccount(3), self.carol)
+        balance = self.call(f.bonanzaAccount(3))[0]
+        self.tx(f.unwrapBonanza(3, balance, self.carol), self.carol)
+        cleanup = self.tx(f.cleanupBonanzaAccount(3), self.carol)
         require(self.call(self.position.functions.externalLegCount(3)) == 0, "First cleanup left an external leg")
 
-        self.tx(f.wrapFiddy(3, 1), self.carol)
-        self.tx(f.stakeFiddy(3, 1), self.carol)
+        self.tx(f.wrapBonanza(3, 1), self.carol)
+        self.tx(f.stakeBonanza(3, 1), self.carol)
         self.activate_operator(operator_b, self.carol)
-        self.tx(f.registerFiddyOperator(3, operator_b), self.carol)
+        self.tx(f.registerBonanzaOperator(3, operator_b), self.carol)
         self.advance(86401)
-        self.tx(f.unstakeFiddy(3, 1), self.carol)
-        self.tx(f.removeFiddyOperator(3), self.carol)
-        self.tx(f.unwrapFiddy(3, 1, self.carol), self.carol)
-        reentry_cleanup = self.tx(f.cleanupFiddyAccount(3), self.carol)
+        self.tx(f.unstakeBonanza(3, 1), self.carol)
+        self.tx(f.removeBonanzaOperator(3), self.carol)
+        self.tx(f.unwrapBonanza(3, 1, self.carol), self.carol)
+        reentry_cleanup = self.tx(f.cleanupBonanzaAccount(3), self.carol)
         require(self.call(self.position.functions.externalLegCount(3)) == 0,
                 "Tiny re-entry cleanup left an external leg")
 
@@ -1213,13 +1213,13 @@ class Campaign(Rehearsal):
                 "Maximum-asset multi-boost path exceeded transaction budget")
         for token, rid in listed:
             require(self.call(token.functions.balanceOf(self.lottery.address)) ==
-                    sum(self.call(f.assetAccounting(token.address))) + self.call(f.fiddyAsset(token.address))[1],
+                    sum(self.call(f.assetAccounting(token.address))) + self.call(f.bonanzaAsset(token.address))[1],
                     "Capacity scenario token liability mismatch")
-            book = self.call(f.fiddyAsset(token.address))
+            book = self.call(f.bonanzaAsset(token.address))
             scaled = book[2]
             for position in self.positions:
-                account = self.call(f.fiddyAccount(position))
-                credit = self.call(f.fiddyCredit(position, token.address))
+                account = self.call(f.bonanzaAccount(position))
+                credit = self.call(f.bonanzaCredit(position, token.address))
                 scaled += credit[1] * RAY + credit[2] + account[2] * (book[0] - credit[0])
             require(scaled == book[1] * RAY, "Capacity asset scaled entitlement mismatch")
         self.result("maximum-asset multi-boost abuse", {
@@ -1229,8 +1229,8 @@ class Campaign(Rehearsal):
 
     def coverage_gate(self):
         exceptions = {
-            "protocolMoveFiddy(address,address,uint256)": "Authenticated Diamond self-call; direct unauthorized revert plus successful value-moving paths",
-            "initializeFiddy(address,address,address,address)": "Already initialized atomically in the installation cut; duplicate and unauthorized reverts",
+            "protocolMoveBonanza(address,address,uint256)": "Authenticated Diamond self-call; direct unauthorized revert plus successful value-moving paths",
+            "initializeBonanza(address,address,address,address)": "Already initialized atomically in the installation cut; duplicate and unauthorized reverts",
         }
         abi = {abi_to_signature(a): a for a in self.lottery.abi if a["type"] == "function"}
         missing = []
@@ -1242,10 +1242,10 @@ class Campaign(Rehearsal):
             satisfied = bool(evidence["view"] if view else evidence["success"])
             exception_evidence = None
             errors = {e.get("expectedError") for e in evidence["revert"]}
-            if signature == "protocolMoveFiddy(address,address,uint256)":
+            if signature == "protocolMoveBonanza(address,address,uint256)":
                 exception_evidence = evidence.get("internal", [])
                 satisfied = bool(exception_evidence and "OnlyProtocol()" in errors)
-            elif signature == "initializeFiddy(address,address,address,address)":
+            elif signature == "initializeBonanza(address,address,address,address)":
                 exception_evidence = getattr(self, "initialization_evidence", None)
                 satisfied = bool(exception_evidence and {"AlreadyInitialized()", "NotAuthority(address)"} <= errors)
             if not satisfied:

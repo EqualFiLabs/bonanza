@@ -5,7 +5,7 @@ import { SafeCast } from "openzeppelin-contracts/contracts/utils/math/SafeCast.s
 
 import { IEqualFiDrandRegistry } from "../interfaces/IEqualFiDrandRegistry.sol";
 import { ISettlement } from "../interfaces/ISettlement.sol";
-import { LibFiddyStorage } from "../libraries/LibFiddyStorage.sol";
+import { LibBonanzaStorage } from "../libraries/LibBonanzaStorage.sol";
 import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
 import { LibReentrancy } from "../libraries/LibReentrancy.sol";
 import { LibTicketRanges } from "../libraries/LibTicketRanges.sol";
@@ -110,7 +110,7 @@ contract SettlementFacet is ISettlement {
             round.config.winnerBps,
             round.config.operatorProtocolBps,
             round.config.recipientBps,
-            LibFiddyStorage.state().stakerAccrued[roundId],
+            LibBonanzaStorage.state().stakerAccrued[roundId],
             round.config.finalizerTip
         );
     }

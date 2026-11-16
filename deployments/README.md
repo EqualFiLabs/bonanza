@@ -1,4 +1,8 @@
-# Deployment Evidence
+# Historical Deployment Evidence
+
+These records predate deadline draws and the current BONANZA/recipient surface.
+They preserve the original deployment identities and do not identify a current
+release target. See the [release checkpoint](../docs/release-checkpoint.md).
 
 Deployment evidence is grouped by network. Each manifest has a distinct claim boundary; no single
 file establishes source provenance, initial deployment state, and the later lifecycle by itself.

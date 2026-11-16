@@ -23,8 +23,8 @@ import {
     IntegrationToken,
     LotteryIntegrationSetup
 } from "./utils/LotteryIntegrationSetup.sol";
-import { FiddySetup } from "./utils/FiddySetup.sol";
-import { FiddyAsset, FiddyConfig, FiddyCredit } from "../src/shared/FiddyTypes.sol";
+import { BonanzaSetup } from "./utils/BonanzaSetup.sol";
+import { BonanzaAsset, BonanzaConfig, BonanzaCredit } from "../src/shared/BonanzaTypes.sol";
 
 contract LotteryRevenueFuzzTest is LotteryIntegrationSetup {
     function testFuzz_RevenueConservation(
@@ -489,7 +489,7 @@ contract LotteryInvariantTest is StdInvariant, LotteryIntegrationSetup {
 }
 
 /// @notice Concurrent reward rounds in two Payment Tokens, each booking a staker share at purchase.
-contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
+contract LotteryRewardInvariantTest is StdInvariant, BonanzaSetup {
     uint256 internal constant RAY = 1e27;
     LotteryStateHandler internal handler;
 
@@ -498,9 +498,9 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
         _wrap(1, alice, 100);
         _wrap(2, bob, 70);
         vm.prank(alice);
-        staking.stakeFiddy(1, 100);
+        staking.stakeBonanza(1, 100);
         vm.prank(bob);
-        staking.stakeFiddy(2, 70);
+        staking.stakeBonanza(2, 70);
         LotteryConfig memory configA = _config(address(tokenA), 10, 10, 10, 1 days, 30);
         configA.winnerBps = 5000;
         configA.operatorProtocolBps = 4000;
@@ -512,8 +512,8 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
         configB.recipientBps = 750;
         configB.recipient = makeAddr("reward recipient B");
         vm.startPrank(authority);
-        uint64 first = governance.createRewardLotteryConfig(configA, FiddyConfig(0, 4000, false));
-        governance.createRewardLotteryConfig(configB, FiddyConfig(0, 5000, false));
+        uint64 first = governance.createRewardLotteryConfig(configA, BonanzaConfig(0, 4000, false));
+        governance.createRewardLotteryConfig(configB, BonanzaConfig(0, 5000, false));
         governance.setLotteryConfigEnabled(first, true);
         governance.setLotteryConfigEnabled(first + 1, true);
         vm.stopPrank();
@@ -544,14 +544,14 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
     }
 
     function invariant_RewardRoundsKeepPerTokenEscrowAndRevenueExact() public view {
-        (, uint256 backing,,,,,) = fiddyView.fiddyReserve();
+        (, uint256 backing,,,,,) = bonanzaView.bonanzaReserve();
         _assertToken(address(tokenA), backing);
         _assertToken(address(tokenB), 0);
     }
 
     function _assertToken(address asset, uint256 backing) private view {
         AssetAccounting memory accounting = stateView.assetAccounting(asset);
-        FiddyAsset memory book = fiddyView.fiddyAsset(asset);
+        BonanzaAsset memory book = bonanzaView.bonanzaAsset(asset);
         uint256 accounted = accounting.activeRoundEscrow + accounting.winnerLiability
             + accounting.finalizerLiability + accounting.pendingOperatorRevenueTotal
             + accounting.treasuryAvailable + accounting.recipientLiability + book.reserved + backing;
@@ -567,7 +567,7 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
             uint256 roundId = handler.roundIdAt(i);
             Round memory current = stateView.round(roundId);
             if (current.config.paymentToken != asset) continue;
-            uint256 staker = fiddyView.fiddyRoundRevenue(roundId);
+            uint256 staker = bonanzaView.bonanzaRoundRevenue(roundId);
             booked += staker;
             if (current.status == RoundStatus.Open || current.status == RoundStatus.SoldOut) {
                 escrow += current.receipts - staker;
@@ -585,8 +585,8 @@ contract LotteryRewardInvariantTest is StdInvariant, FiddySetup {
 
         uint256 scaled = book.dustRay;
         for (uint256 id = 1; id <= 2; ++id) {
-            FiddyCredit memory c = fiddyView.fiddyCredit(id, asset);
-            scaled += c.claimable * RAY + c.remainderRay + fiddyView.fiddyAccount(id).weight
+            BonanzaCredit memory c = bonanzaView.bonanzaCredit(id, asset);
+            scaled += c.claimable * RAY + c.remainderRay + bonanzaView.bonanzaAccount(id).weight
             * (book.indexRay - c.paidIndex);
         }
         assertEq(book.reserved * RAY, scaled);

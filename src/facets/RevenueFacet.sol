@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import { IRevenue } from "../interfaces/IRevenue.sol";
-import { LibFiddy } from "../libraries/LibFiddy.sol";
+import { LibBonanza } from "../libraries/LibBonanza.sol";
 import { LibExactToken } from "../libraries/LibExactToken.sol";
 import { LibLotteryStorage } from "../libraries/LibLotteryStorage.sol";
 import { LibOperatorFeeRouter } from "../libraries/LibOperatorFeeRouter.sol";
@@ -63,7 +63,7 @@ contract RevenueFacet is IRevenue {
 
     /// @notice The snapshotted recipient may claim its full allocation to a receiver it chooses,
     /// so an address that can no longer receive the Payment Token can still recover it.
-    /// FIDDY keeps the ordinary caller-or-Treasury receiver restriction.
+    /// BONANZA keeps the ordinary caller-or-Treasury receiver restriction.
     function claimRecipientRevenue(uint256 roundId, address receiver)
         external
         nonReentrant
@@ -114,7 +114,7 @@ contract RevenueFacet is IRevenue {
         uint256 accounted = accounting.activeRoundEscrow + accounting.winnerLiability
             + accounting.refundLiability + accounting.finalizerLiability
             + accounting.pendingOperatorRevenueTotal + accounting.treasuryAvailable
-            + accounting.recipientLiability + LibFiddy.extraReserved(asset);
+            + accounting.recipientLiability + LibBonanza.extraReserved(asset);
         uint256 balance = IERC20(asset).balanceOf(address(this));
         return balance > accounted ? balance - accounted : 0;
     }

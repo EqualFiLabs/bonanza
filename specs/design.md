@@ -1,8 +1,8 @@
-# Design Document: Statics Lottery
+# Design Document: Bonanza
 
 ## Overview
 
-Statics Lottery is a sellout-or-deadline, configurable ERC-20 lottery implemented as an EIP-2535 Diamond.
+Bonanza is a sellout-or-deadline, configurable ERC-20 lottery implemented as an EIP-2535 Diamond.
 
 Players purchase one or more non-transferable ticket positions using the governance-approved Payment Token selected by the Round's immutable configuration version. Multiple concurrent Rounds may use different tokens. Each Round snapshots the complete configuration in effect when the Round begins. Opening schedules a beacon strictly after the sales deadline plus delay. An early final purchase deterministically replaces it with the first beacon strictly after sellout plus delay. Sales stop on sellout or deadline, and anyone may settle from that exact beacon. Only sold tickets participate, and only actual receipts are allocated.
 
@@ -10,7 +10,7 @@ Settlement deterministically divides Round revenue among:
 
 1. the winning ticket holder;
 2. Statics Operators;
-3. configured FIDDY stakers;
+3. configured BONANZA stakers;
 4. the Statics Treasury; and
 5. the finalizer incentive, paid exclusively from the Treasury allocation.
 
@@ -83,7 +83,7 @@ alongside reward-asset, bootstrap, and synchronized-weight status views. The Lot
 ```mermaid
 flowchart TD
     D[drand Quicknet] --> R[EqualFiDrandRegistry]
-    U[Players] --> L[Statics Lottery Diamond]
+    U[Players] --> L[Bonanza Diamond]
     R --> L
     L --> W[Per-token Winner Liability]
     L --> T[Per-token Treasury Accounting]
@@ -438,7 +438,7 @@ per-purchase limit respected
 buyer spent == Lottery received == ticketPrice * ticketQuantity
 ```
 
-For every purchase, the Lottery measures the buyer and Diamond token balances before and after `SafeERC20.safeTransferFrom`. It reverts with `InexactTokenTransfer` unless both deltas equal the required amount. Successful purchases increase the Round's receipts and cumulative ticket range by that exact amount. When the Round has a FIDDY staker share, the purchase books `share = floor(amount * (BPS - winnerBps) * stakerProtocolBps / BPS^2)` to stakers immediately and increases the token's active escrow by `amount - share`; otherwise escrow increases by `amount`. Token decimals are not normalized; each configuration expresses ticket price and Finalizer Tip directly in that Payment Token's base units.
+For every purchase, the Lottery measures the buyer and Diamond token balances before and after `SafeERC20.safeTransferFrom`. It reverts with `InexactTokenTransfer` unless both deltas equal the required amount. Successful purchases increase the Round's receipts and cumulative ticket range by that exact amount. When the Round has a BONANZA staker share, the purchase books `share = floor(amount * (BPS - winnerBps) * stakerProtocolBps / BPS^2)` to stakers immediately and increases the token's active escrow by `amount - share`; otherwise escrow increases by `amount`. Token decimals are not normalized; each configuration expresses ticket price and Finalizer Tip directly in that Payment Token's base units.
 
 ### Deadline closure
 
@@ -530,7 +530,7 @@ uint256 gross = round.receipts;
 uint256 winnerAmount = Math.mulDiv(gross, round.config.winnerBps, BPS);
 uint256 protocolAmount = gross - winnerAmount;
 uint256 operatorAmount = Math.mulDiv(protocolAmount, round.config.operatorProtocolBps, BPS);
-uint256 stakerAmount = stakerAccrued[roundId]; // booked per purchase, zero without FIDDY rewards
+uint256 stakerAmount = stakerAccrued[roundId]; // booked per purchase, zero without BONANZA rewards
 uint256 recipientAmount = Math.mulDiv(gross, round.config.recipientBps, BPS);
 uint256 treasuryGross = protocolAmount - operatorAmount - stakerAmount - recipientAmount;
 uint256 finalizerTip = Math.min(round.config.finalizerTip, treasuryGross);
@@ -571,7 +571,7 @@ finalizerCredits[round.config.paymentToken][msg.sender] += finalizerTip
 accounting.finalizerLiability += finalizerTip
 ```
 
-Settlement does not transfer the Payment Token to the winner, Operators, Treasury, or finalizer. It emits `StakerRevenueSettled` with the booked staker total and does not call Statics or change FIDDY staking state.
+Settlement does not transfer the Payment Token to the winner, Operators, Treasury, or finalizer. It emits `StakerRevenueSettled` with the booked staker total and does not call Statics or change BONANZA staking state.
 
 Validates Requirements 7 through 13, 16, 18, 19 and 20.
 
@@ -1618,15 +1618,15 @@ src/
 The BLS primitive library should be pinned to a reviewed `bls-solidity` implementation rather than modifying cryptographic primitives locally.
 
 
-# FIDDY rewards extension
+# BONANZA rewards extension
 
-[FIDDY rewards](../docs/fiddy-rewards.md) specifies the additional token, account,
+[BONANZA rewards](../docs/bonanza-rewards.md) specifies the additional token, account,
 registration, staking, storage and API behavior. It extends the base allocation with a staker
 percentage of protocol receipts, booked to the revenue index at each purchase rather than at
 settlement. Settlement subtracts the booked staker total before the Treasury-funded finalizer
 tip. A missing extension means zero participation issuance and zero staker allocation; existing
 round structures are unchanged. Reserve funding follows Burntato: deposit exact STATICS and mint
-matching FIDDY into reward inventory immediately. Participation only credits existing inventory
+matching BONANZA into reward inventory immediately. Participation only credits existing inventory
 to accounts. Public wrap/unwrap remain independently disabled at launch; funding reward
 inventory does not enable public conversion or create funder redemption rights.
 
@@ -1673,9 +1673,9 @@ and other accounts still cannot choose the receiver. It remains available while 
 `recipientAmount` in `RoundSettled` and performs no token calls. Existing views expose the new
 fields, and surplus accounting includes the aggregate liability.
 
-For FIDDY, the fixed-recipient delivery is a separate narrowly scoped protocol movement using the
+For BONANZA, the fixed-recipient delivery is a separate narrowly scoped protocol movement using the
 existing exact movement capability and balance-delta checks. Generic payout receiver checks and
-restricted ordinary token transfers remain enforced; a recipient-directed FIDDY claim therefore
+restricted ordinary token transfers remain enforced; a recipient-directed BONANZA claim therefore
 pays only the recipient itself or the Treasury recipient. Historical manifests and their pinned
 validators describe older deployments and do not qualify this release.
 

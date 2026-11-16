@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Statics Lottery is a standalone, sellout-or-deadline onchain lottery that accepts a governance-approved ERC-20 payment token configured per Round, schedules each Round at opening for a drand Quicknet beacon strictly after its sales deadline plus delay, replacing that schedule only on atomic early Sellout with a beacon strictly after sellout plus delay, and permits anyone to finalize the result once the committed beacon is available.
+Bonanza is a standalone, sellout-or-deadline onchain lottery that accepts a governance-approved ERC-20 payment token configured per Round, schedules each Round at opening for a drand Quicknet beacon strictly after its sales deadline plus delay, replacing that schedule only on atomic early Sellout with a beacon strictly after sellout plus delay, and permits anyone to finalize the result once the committed beacon is available.
 
 Each Round distributes its payment-token revenue among the winning ticket holder, the Statics Treasury, and Statics Operators. Operator revenue is contributed directly to the standalone `OperatorFeeRouter` in the same ERC-20 token used to purchase that Round's tickets.
 
@@ -22,7 +22,7 @@ Randomness verification SHALL be delegated to the shared `EqualFiDrandRegistry`.
 
 **Lottery**
 
-The standalone Statics Lottery protocol.
+The standalone Bonanza protocol.
 
 **Round**
 
@@ -265,7 +265,7 @@ A settled Round state from which ticket purchases can never resume. The legacy e
 
 1. WHEN a closed Round settles, THE Lottery SHALL calculate gross Round revenue from the Round's actual receipts (`ticketPrice * soldTickets`).
 2. THE Lottery SHALL allocate the configured Winner Share from gross Round revenue.
-3. THE Lottery SHALL allocate the Operator share of the non-winner Protocol Share and the optional Recipient share of gross receipts, then assign Treasury the remainder after booked FIDDY staker revenue.
+3. THE Lottery SHALL allocate the Operator share of the non-winner Protocol Share and the optional Recipient share of gross receipts, then assign Treasury the remainder after booked BONANZA staker revenue.
 4. THE Winner Share, Operator Share, Recipient Share, Treasury Share, and Finalizer Tip SHALL be deterministically derivable from the Configuration Snapshot and gross Round revenue.
 5. THE total allocated value SHALL NOT exceed gross Round revenue.
 6. THE Lottery SHALL account for rounding deterministically.
@@ -517,21 +517,21 @@ A settled Round state from which ticket purchases can never resume. The legacy e
 - The immutable drand Registry is a release-critical formal-verification target with an explicit trusted computing base and no unresolved required proof results.
 
 
-### Requirement 26: Backed FIDDY and PositionNFT revenue staking
+### Requirement 26: Backed BONANZA and PositionNFT revenue staking
 
-The normative FIDDY specification is [FIDDY rewards](../docs/fiddy-rewards.md).
+The normative BONANZA specification is [BONANZA rewards](../docs/bonanza-rewards.md).
 
-1. Every FIDDY unit SHALL have one allocated STATICS unit of backing. Reserve funding SHALL immediately mint backed FIDDY into reward inventory. Inventory is part of supply and its STATICS backing SHALL NOT be counted twice. Participation SHALL distribute existing inventory without minting or changing backing; inventory, account custody and Payment Token liabilities remain separately accounted.
+1. Every BONANZA unit SHALL have one allocated STATICS unit of backing. Reserve funding SHALL immediately mint backed BONANZA into reward inventory. Inventory is part of supply and its STATICS backing SHALL NOT be counted twice. Participation SHALL distribute existing inventory without minting or changing backing; inventory, account custody and Payment Token liabilities remain separately accounted.
 2. Participation issuance SHALL be capped by funded inventory, attributed to an explicitly selected owned PositionNFT, and independent of ticket and winner rights.
-3. FIDDY transfers SHALL require an approved consumer endpoint or an exact authorized protocol movement. Approvals alone never bypass this restriction. Account withdrawals SHALL pay only the current PositionNFT owner, and protocol FIDDY payouts SHALL go only to the caller, the Treasury recipient, or the fixed Recipient snapshotted for a settled Round through its dedicated payout path.
-4. Public wrap and unwrap SHALL launch independently disabled with zero public wrap capacity. Only a separately enabled unwrap burns FIDDY and releases matching STATICS.
+3. BONANZA transfers SHALL require an approved consumer endpoint or an exact authorized protocol movement. Approvals alone never bypass this restriction. Account withdrawals SHALL pay only the current PositionNFT owner, and protocol BONANZA payouts SHALL go only to the caller, the Treasury recipient, or the fixed Recipient snapshotted for a settled Round through its dedicated payout path.
+4. Public wrap and unwrap SHALL launch independently disabled with zero public wrap capacity. Only a separately enabled unwrap burns BONANZA and releases matching STATICS.
 5. Future immutable configurations SHALL snapshot reward rates and staker protocol shares without enlarging existing embedded round storage. A configuration with a nonzero staker share SHALL list its Payment Token as a revenue asset at creation, with at most 64 revenue assets ever listed.
 6. Every ticket purchase SHALL book its staker share, `amount * (10000 - winnerBps) * stakerProtocolBps / 10000^2` with one floor, into the asset's revenue index, or into Treasury when total weight is zero. Settlement SHALL give Treasury the protocol remainder less the Operator share, the booked staker total, the optional Recipient share and the capped finalizer tip, and SHALL NOT call Statics or change staking state.
 7. Every weight change, claim and cleanup SHALL first checkpoint the account across all listed revenue assets in the same call. Unstaking SHALL be locked for 24 hours after staking, with a stake-weighted reset on top-ups.
 8. Operator boosts SHALL use unique registrations requiring ownership of both NFTs, direct activation reads and prospective explicit refresh, independent of Statics links. Every checkpoint SHALL revoke a boost whose activation multiplier fell below the stored value or whose Operator owner differs from the PositionNFT owner, forfeiting the boosted excess since the last checkpoint to other stakers.
 9. Current PositionNFT ownership SHALL control account actions and legitimate historical rewards. Occupied accounts SHALL retain closure protection. Each account SHALL expose a nonce that changes on every owner action that changes it and on a boost forfeit, but not on a third-party checkpoint.
 10. Zero-weight revenue and rounding dust SHALL never be captured by future entrants. Inventory, backing, account custody and reserved staker revenue SHALL be protected from surplus absorption.
-11. A FIDDY-priced configuration with a nonzero Operator share SHALL require the current Router to be an approved FIDDY consumer, and Router funding in FIDDY SHALL remain retryable until it is.
+11. A BONANZA-priced configuration with a nonzero Operator share SHALL require the current Router to be an approved BONANZA consumer, and Router funding in BONANZA SHALL remain retryable until it is.
 
 
 ### Requirement 27: Optional Round Recipient
@@ -542,10 +542,10 @@ The normative FIDDY specification is [FIDDY rewards](../docs/fiddy-rewards.md).
 
 1. THE Round Configuration SHALL include `recipientBps` applied to gross receipts and `recipient`; zero BPS SHALL disable the allocation regardless of the stored address.
 2. A positive Recipient share SHALL require a nonzero address other than the Lottery Diamond; both EOAs and contracts SHALL be permitted.
-3. THE Lottery SHALL reject configurations whose Winner, Operator, Recipient and configured FIDDY staker allocations exceed gross receipts, including at rounding boundaries.
+3. THE Lottery SHALL reject configurations whose Winner, Operator, Recipient and configured BONANZA staker allocations exceed gross receipts, including at rounding boundaries.
 4. WHEN a Round opens, THE Lottery SHALL snapshot both recipient settings and SHALL NOT allow subsequent configuration or Treasury-recipient changes to redirect its proceeds.
 5. Settlement SHALL record `floor(actualReceipts * recipientBps / 10000)` as a round claim and per-token liability without interacting with the Payment Token. The Finalizer Tip SHALL NOT reduce this allocation.
 6. ANY account SHALL be able to deliver the full outstanding allocation only to the snapshotted recipient, in the round's Payment Token, including while paused. The snapshotted recipient SHALL also be able to claim the full outstanding allocation to a receiver it chooses, other than the zero address or the Lottery Diamond, including while paused; no other account SHALL choose the receiver. A failed, inexact or reentrant transfer SHALL revert atomically and preserve its liability without blocking independent payouts.
 7. THE Lottery SHALL include all unpaid Recipient allocations in solvency and surplus protection, expose them through existing round/accounting views, and emit settlement and delivery amounts.
-8. Restricted FIDDY payouts SHALL permit this fixed-recipient protocol exit without enabling redirected winner, finalizer or staking withdrawals or unrestricted onward transfers. A recipient-directed FIDDY claim SHALL go only to the recipient itself or the Treasury recipient.
+8. Restricted BONANZA payouts SHALL permit this fixed-recipient protocol exit without enabling redirected winner, finalizer or staking withdrawals or unrestricted onward transfers. A recipient-directed BONANZA claim SHALL go only to the recipient itself or the Treasury recipient.
 9. This greenfield release SHALL extend configuration, round and accounting structures directly. It SHALL NOT provide legacy ABI adapters, migrations or separate recipient storage domains. Existing deployment defaults SHALL leave the allocation disabled.
