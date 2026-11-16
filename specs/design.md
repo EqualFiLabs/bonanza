@@ -1692,9 +1692,10 @@ inventory does not enable public conversion or create funder redemption rights.
 Staking checkpoints an account across every listed revenue asset (at most 64) in one call before
 any weight change, claim or cleanup. Unstaking is locked for 24 hours with a stake-weighted reset
 on top-ups. Operator boosts are validated at every checkpoint by reading the activation multiplier
-and both NFT owners directly; an invalid boost forfeits its excess since the last checkpoint to
-the other stakers. The Lottery does not read Statics NFT transfer history. Exits depend on Statics
-only through PositionNFT `ownerOf`, an accepted trust assumption.
+and both NFT owners directly; an invalid boost credits its excess since the last checkpoint to
+Treasury without redistributing it through the revenue index. The Lottery does not read Statics
+NFT transfer history. Exits depend on Statics only through PositionNFT `ownerOf`, an accepted
+trust assumption.
 
 The external-account binding uses the reduced seven-selector ERC-165 interface, with no
 ownership-journal methods or events. Actual-source integration builds a matching pinned Statics

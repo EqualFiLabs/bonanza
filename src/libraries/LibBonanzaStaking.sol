@@ -125,17 +125,16 @@ library LibBonanzaStaking {
         return IERC721(s.operators).ownerOf(a.operatorId) == IERC721(s.positionNFT).ownerOf(id);
     }
 
-    /// @notice Books base accrual since the last checkpoint and redistributes the boosted excess
-    /// to every other weight, or to Treasury when none exists, then clears the registration.
+    /// @notice Books base accrual since the last checkpoint, credits the boosted excess to
+    /// Treasury, then clears the registration.
     function forfeit(uint256 id) internal {
         LibBonanzaStorage.State storage s = LibBonanzaStorage.state();
         BonanzaAccount storage a = s.accounts[id];
         uint256 excessWeight = a.weight - a.staked;
-        uint256 otherWeight = s.totalWeight - a.weight;
         address[] storage assets = s.revenueAssets;
         uint256 count = assets.length;
         for (uint256 i; i < count; ++i) {
-            _forfeitAsset(id, assets[i], excessWeight, otherWeight);
+            _forfeitAsset(id, assets[i], excessWeight);
         }
         uint256 operatorId = a.operatorId;
         clearRegistration(id);
@@ -144,9 +143,7 @@ library LibBonanzaStaking {
         emit BonanzaBoostRevoked(id, operatorId);
     }
 
-    function _forfeitAsset(uint256 id, address asset, uint256 excessWeight, uint256 otherWeight)
-        private
-    {
+    function _forfeitAsset(uint256 id, address asset, uint256 excessWeight) private {
         LibBonanzaStorage.State storage s = LibBonanzaStorage.state();
         BonanzaAsset storage revenue = s.assets[asset];
         BonanzaCredit storage c = s.credits[id][asset];
@@ -155,16 +152,9 @@ library LibBonanzaStaking {
         if (excessWeight != 0 && delta != 0) {
             // The excess is excessWeight * delta in RAY-scaled units.
             uint256 amount = Math.mulDiv(excessWeight, delta, RAY);
-            if (otherWeight == 0) {
-                revenue.reserved -= amount;
-                LibLotteryStorage.accountingStorage()
-                        .assetAccounting[asset]
-                        .treasuryAvailable += amount;
-                dust(asset, mulmod(excessWeight, delta, RAY));
-            } else {
-                revenue.indexRay += Math.mulDiv(excessWeight, delta, otherWeight);
-                dust(asset, mulmod(excessWeight, delta, otherWeight));
-            }
+            revenue.reserved -= amount;
+            LibLotteryStorage.accountingStorage().assetAccounting[asset].treasuryAvailable += amount;
+            dust(asset, mulmod(excessWeight, delta, RAY));
             emit BonanzaBoostForfeited(
                 id, s.accounts[id].operatorId, asset, amount, revenue.indexRay
             );

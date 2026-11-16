@@ -266,24 +266,17 @@ class Campaign(Rehearsal):
         """Independent exact state transition for an invalid boost forfeiture."""
         f = self.lottery.functions
         account = self.call(f.bonanzaAccount(position))
-        total_weight = self.call(f.bonanzaStaking())[0]
         revenue = self.call(f.bonanzaAsset(asset))
         accounting = self.call(f.assetAccounting(asset))
         whole, remainder, delta = self.modeled_bonanza_credit(position, asset, account[1])
         index, reserved, dust = revenue[:3]
         treasury = accounting[5]
         excess_weight = account[2] - account[1]
-        other_weight = total_weight - account[2]
         scaled_dust = 0
         if excess_weight and delta:
-            numerator = excess_weight * delta
-            if other_weight:
-                index_increment, scaled_dust = divmod(numerator, other_weight)
-                index += index_increment
-            else:
-                amount, scaled_dust = divmod(numerator, RAY)
-                reserved -= amount
-                treasury += amount
+            amount, scaled_dust = divmod(excess_weight * delta, RAY)
+            reserved -= amount
+            treasury += amount
         dust_whole, dust = divmod(dust + scaled_dust, RAY)
         reserved -= dust_whole
         treasury += dust_whole
