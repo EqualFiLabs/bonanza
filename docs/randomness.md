@@ -107,42 +107,12 @@ signature point, mapped message point, compiled Quicknet DST, compiled public ke
 pairing transcript. `accepted` represents the pairing relation for that specific transcript; it is
 not an unconstrained oracle and cannot authorize another proof or Round.
 
-## Historical pinned formal artifacts
+## Verification boundary
 
-The following Lottery report binds the original sellout/refund release, not the deadline-draw implementation. The unchanged Registry package retains its separate source/runtime boundary. Updated Lottery evidence is recorded in a separate candidate report.
-
-### Registry
-
-| Item | Pinned value |
-|---|---|
-| Accepted Registry stack head | `cdc760a9bf5bbbc1647d13e43b22858677dacad6` |
-| Formally verified source | `f8db2a1752d22672d4de1708545e286a32c41497` |
-| Production runtime Keccak-256 | `0xde08fa453cee52a32750e6ff4f736d28b2a4378494cc699e62d27eb44164c1fc` |
-| Solidity / optimizer / EVM | `0.8.30`, 200 runs, Osaka |
-| `bls-solidity` | `11af179a8287d978659aae07adb66aa60f64b8a6` |
-| Halmos / Certora CLI | `0.3.3` / `8.18.0` |
-
-The Registry report records 34 passing Halmos rules, three passing cache-state Certora rules, five
-passing constrained-acceptance rules, and two passing production-runtime Certora rules. Every
-Certora rule has a sanity witness; no required rule timed out or returned unknown. Mutations to
-strict-future selection, first-write immutability, and rejection gating were all detected.
-
-The public proof inputs, per-rule outcomes, hashes, bounds, and exclusions are in the pinned
-Registry dependency at `docs/formal-verification.md` and `formal/results/f8db2a17/summary.json`.
-
-### Lottery
-
-| Item | Pinned value |
-|---|---|
-| Proof candidate | `0e92aaf7095d212fa9b97f2bed747d5a287306c9` |
-| Solidity / optimizer / EVM | `0.8.30`, 200 runs, Osaka |
-| Halmos / Z3 | `0.3.3` / `4.12.6` |
-| Result | 12 of 12 required rules pass; no counterexamples, bounded loops, timeout, or unknown |
-
-Detailed reports and machine-readable execution results are retained privately.
-The [formal package](../formal/README.md) describes the coverage and assumptions;
-[Certora reproduction instructions](../formal/certora/README.md) accompany the
-versioned specifications and harnesses.
+The pinned Registry and historical Lottery campaigns have separate source,
+runtime, model, and assumption boundaries. The [verification summary](../formal/README.md)
+describes prior coverage without applying it to the current candidate. Detailed
+proof inputs, execution tooling, and results are retained privately.
 
 ## Evidence classes
 
@@ -153,7 +123,7 @@ These evidence types answer different questions and must not be collapsed into o
 | Registry solver proof | Round arithmetic, parsing/normalization transformations, constrained acceptance, cache immutability, and production non-posting selectors under the stated model | Cryptographic hardness, client correctness, network liveness, or Lottery behavior |
 | Lottery solver proof | Bounded production commitment, allocation, solvency transition, token isolation, claim non-repeatability, Router atomicity, and cut finalization properties | Registry cryptography, arbitrary ERC-20s, live dispatch, or sequencer fairness |
 | Official Quicknet differential vectors | Concrete serialization, mapping, point representation, pairing transcript, and equal 48/96 normalization for known beacons | Complete-domain proof or Robinhood client behavior |
-| Fork execution | Target-client behavior at a pinned fork state, if run and recorded | This release claims no separate fork-evidence artifact |
+| Fork execution | Local execution against pinned chain state, if run and recorded | Running the local EVM does not establish every target-client behavior or live deployment readiness |
 | Robinhood Testnet execution | Deployed runtime hashes, concrete EIP-2537 calls, live future beacons, settlement, and lifecycle behavior on chain 46630 | Mainnet readiness, malicious-sequencer resistance, or broader formal coverage |
 
 The deployed Registry runtime hash in

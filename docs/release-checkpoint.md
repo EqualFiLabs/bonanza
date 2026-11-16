@@ -1,92 +1,59 @@
-# Statics Lottery Release Checkpoint
+# Bonanza release checkpoint
 
-> Historical release evidence: the deployment, audit disposition, and proof hashes below bind the original sellout/refund release. They do not establish assurance for deadline draws. The current candidate requires its own review, CI, and formal evidence; a new live testnet rehearsal has not been executed.
+This page separates the current source candidate from historical deployment and
+verification evidence. It does not assert production readiness.
 
-This checkpoint consolidates the release evidence for Statics Lottery. It is an audit-readiness
-decision, not a production deployment approval. The Robinhood Testnet deployment remains a
-disposable lifecycle rehearsal, and production governance, roles, integrations, and Payment Tokens
-must be approved separately.
+## Current source
 
-Current deadline-draw proof coverage is described in the [formal summary](../formal/README.md), with versioned [Certora definitions and reproduction instructions](../formal/certora/README.md). Detailed reports and generated results are retained privately. The old testnet lifecycle below remains historical; a fresh deadline-draw deployment has not been rehearsed.
+The current candidate includes deadline draws, backed BONANZA inventory and
+PositionNFT accounts, staking and Operator boosts, and optional round-recipient
+allocations. It uses Bonanza/BONANZA names and the matching current ABI.
 
-## Candidate lineage
+This is a fresh-deployment candidate. Historical finalized Diamonds are not
+updated by the source changes. Clients must use the matching interfaces,
+selectors, events, and configuration types.
 
-- The deployed Lottery source snapshot is
-  `bdd725d809d16812ab910e5add937d76223814c6`.
-- The documentation and audit package reviewed independently is
-  `562db0ee6888fcaabba2cc70f303792fdc09854e`.
-- Commit `8849e0c` corrects the normative accounting-storage sketch to match the deployed
-  append-only layout.
-- Commit `15f1179` makes the lifecycle validator compatible with both bare and enveloped Cast JSON
-  output.
-- No production Solidity changed after the deployed source snapshot. The exact pull-request head
-  and its terminal CI run are the authoritative final candidate evidence.
+## Evidence boundaries
 
-The normative source of truth is the [requirements](../specs/requirements.md) and
-[design](../specs/design.md).
-
-## Independent review disposition
-
-An independent checklist-based review of the committed candidate covered general Solidity risks,
-precision and arithmetic, ERC-20 integration, Diamond upgradeability, randomness, inline assembly,
-chain-specific behavior, and access control.
-
-- No Critical, High, or Medium production finding was confirmed.
-- One Low documentation finding was confirmed: the normative `AccountingStorage` sketch omitted
-  the deployed `admittedPaymentToken` field. Commit `8849e0c` records the field in its deployed
-  position and states the append-only rule for future upgrades.
-- One release-evidence tooling gap was confirmed: current Cast JSON output can wrap decoded values,
-  blocks, receipts, and transactions in a `data` member. Commit `15f1179` normalizes both supported
-  shapes, and the complete lifecycle manifest subsequently validated on Robinhood Testnet chain
-  `46630`.
-
-These results do not remove the trust assumptions and production-deployment gaps documented in
-[the randomness model](randomness.md#trusted-computing-base-and-exclusions) and
-[the governance deployment checklist](governance.md#deployment-checklist).
-
-## Final invariant review
-
-| Release property | Evidence and disposition |
+| Evidence | Meaning for this candidate |
 |---|---|
-| Immutable live-Round terms | Opening copies an enabled immutable configuration and current integration version into Round storage. Later governance actions affect only future opening. |
-| Exclusive drand entropy | A sold-out Round commits once to one strictly future Quicknet Round. Production code contains no fallback beacon, block entropy, administrator entropy, or replacement path. |
-| Honest-sequencer boundary | Canonical execution, ordering, inclusion, data availability, and permitted timestamp progression are Robinhood chain-level assumptions. A rogue sequencer is a chain-wide failure; the Lottery does not claim a local remedy or weaken its no-fallback rule. |
-| Accounting-only settlement | Settlement records terminal state and token-denominated liabilities without transferring the Payment Token or depending on winner, Treasury, Router, or claimant cooperation. |
-| Exact ERC-20 accounting | Ingress and egress validate both sender spend and recipient receipt. Liabilities, escrow, revenue, refunds, and surplus remain scoped to the Round's admitted Payment Token. |
-| Concurrent token isolation | The lifecycle rehearsal ran concurrent WETH and STATICS Rounds and reconciled their independent settlement, claims, refund, Treasury, and Operator balances. |
-| External deployment provenance | The Lottery manifest pins the reused Statics Genesis source/manifest, five dependency runtimes, and the Router-owned deployment evidence; the composition document separates reused, fresh, exercised, and untested components. |
-| Retryable liability reduction | Winner, refund, finalizer, Treasury, and Operator paths are pull-based. Failed external interactions preserve their corresponding liabilities. |
-| Irreversible code finalization | The cut-disabled latch is monotonic; the testnet lifecycle preserved storage across an upgrade, finalized the Diamond, rejected a later cut, and retained ordinary Lottery operation. |
-| Registry deployment binding | The pinned Registry proof package binds its production runtime hash, Quicknet trust anchor, compiler configuration, proof assumptions, and per-rule results. The testnet manifest reconciles the deployed runtime and live compressed and uncompressed proofs. |
+| CI | Builds, formatting, lint, ABI parity, tests, Slither, and runner safety for the exact commit that completed the workflow |
+| Local tests | Executed cases under their fixtures and inputs; environment-gated fork tests may be skipped |
+| Fork rehearsal | Local execution against a pinned chain state when actually run and recorded; the runner's presence is not an execution result |
+| Formal verification | Historical results apply to their original candidates and models; see the [summary](../formal/README.md) |
+| Committed testnet manifests | Historical deployment and lifecycle evidence; they do not qualify the current ABI or economics |
 
-## Validation boundary
+The complete suite and static analysis run in
+[CI](https://github.com/EqualFiLabs/bonanza/actions/workflows/ci.yml). A green run
+for an earlier commit does not establish a later commit's validation state.
 
-The release gate uses distinct forms of evidence:
+## Historical testnet records
 
-- GitHub CI owns formatting, compilation, lint, the complete Foundry unit/fuzz/invariant suite,
-  and Slither for the exact pull-request head. A previous green run is not evidence for a later
-  commit; the final review must wait for terminal CI on the current head.
-- Focused local checks cover changed documentation, shell syntax, both Cast JSON shapes, and the
-  live lifecycle validator. They do not replace the CI suite.
-- The Lottery formal report records 12 passing Halmos properties for proof candidate
-  `0e92aaf7095d212fa9b97f2bed747d5a287306c9`, with Solidity 0.8.30, optimizer 200, Osaka EVM,
-  Halmos 0.3.3, and Z3 4.12.6. The report has no counterexample, timeout, unknown result, or bounded
-  loop among required rules.
-- The Registry report records 34 passing Halmos rules and passing Certora groups of three cache,
-  five constrained-acceptance, and two production-runtime rules, with required sanity witnesses
-  and no unresolved required result.
-- Metadata-free executable hashes reconcile the eight proof-bound Lottery runtimes with the
-  deployed source snapshot. `DiamondLoupeFacet` and `LotteryInit` remain outside those eight formal
-  runtime bindings and are covered by review, tests, and deployment evidence.
-- Robinhood Testnet validators and the committed lifecycle manifest establish concrete behavior on
-  chain `46630`. They do not establish production configuration, mainnet readiness, network
-  liveness, cryptographic hardness, compiler/client correctness, or malicious-sequencer resistance.
-- [`robinhood-testnet.md`](robinhood-testnet.md) and the
-  [`deployment index`](../deployments/README.md) define the provenance boundary for the reused
-  Statics Genesis contracts and the freshly deployed Registry, Router, and Lottery components.
+The [deployment index](../deployments/README.md) and
+[testnet provenance guide](robinhood-testnet.md) describe the original Robinhood
+Testnet rehearsal. That deployment predates deadline draws and the current
+BONANZA/recipient surface. Its refund transactions describe the retired lifecycle;
+current rounds have no cancellation or refund path.
 
-The audit-ready decision requires terminal green CI on the final pull-request head, no unresolved
-confirmed finding, and review of every production configuration against
-[`governance.md`](governance.md), [`accounting.md`](accounting.md), and
-[`randomness.md`](randomness.md). Production deployment additionally requires a separately approved
-timelocked authority, separated operational roles, and freshly verified integration manifests.
+The recorded Lottery source is
+`bdd725d809d16812ab910e5add937d76223814c6`. Deployment manifests retain the exact
+original names, addresses, selectors, hashes, and transactions as historical
+records. They are not current deployment targets.
+
+## Deployment conditions
+
+A release needs validation of the exact candidate, target-chain dependencies,
+runtime hashes, selector installation, token admission, and governance roles.
+The external authority must supply the intended timelock; Diamond finalization
+disables code changes while leaving configuration governance available.
+
+Deployment artifacts must retain embedded IPFS compiler metadata and CBOR.
+Effective build settings and the exact artifacts require inspection before
+broadcast; full-match explorer verification is required before activation.
+Historical proof results, local fixtures, or testnet role choices do not satisfy
+these deployment conditions.
+
+The normative behavior remains in the [requirements](../specs/requirements.md)
+and [design](../specs/design.md). Read the [governance](governance.md),
+[accounting](accounting.md), and [randomness](randomness.md) guides for the
+associated trust boundaries.

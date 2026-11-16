@@ -1,9 +1,13 @@
-# Robinhood Testnet Composition and Provenance
+# Historical Robinhood Testnet Composition and Provenance
 
 The Robinhood Testnet deployment on chain `46630` is a disposable integration rehearsal for
-Statics Lottery. It combines existing Statics Genesis replica contracts with freshly deployed
-Lottery, drand Registry, and Operator Fee Router components. It did not replay the Statics Genesis
-launch.
+an earlier Bonanza Lottery release. It combines existing Statics Genesis replica
+contracts with freshly deployed Lottery, drand Registry, and Operator Fee Router
+components. It did not replay the Statics Genesis launch.
+
+These records predate deadline draws and the current BONANZA/recipient surface.
+Original manifest names, hashes, and transactions are preserved as historical
+evidence. See the [release checkpoint](release-checkpoint.md) for current status.
 
 ## Provenance map
 
@@ -15,7 +19,7 @@ launch.
 | WETH and STATICS | Reused | Same Statics manifest; admitted as ordinary Lottery Payment Tokens |
 | EqualFi drand Registry | Fresh | [`registry.json`](../deployments/robinhood-testnet/registry.json) |
 | Operator Fee Router and testnet admin | Fresh | [`EqualFiLabs/operator-fee-router` deployment manifest](https://github.com/EqualFiLabs/operator-fee-router/blob/5454f935a2037453f5d2f819d64c864f16363df4/deployments/46630/operator-fee-router-rehearsal.json) |
-| Statics Lottery Diamond, facets, and initializer | Fresh | [`lottery.json`](../deployments/robinhood-testnet/lottery.json) |
+| Historical Lottery Diamond, facets, and initializer | Fresh | [`lottery.json`](../deployments/robinhood-testnet/lottery.json) |
 
 The Statics manifest is pinned at commit
 `31e870900615197277bcccef6bfdb06dba452930`, and identifies Genesis replica source commit

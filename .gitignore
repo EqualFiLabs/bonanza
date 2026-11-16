@@ -11,9 +11,8 @@ __pycache__/
 /.certora-tools/
 /.certora_internal/
 /emv-*-certora-*/
-/formal/results/
-/formal/evidence/
-/formal/reports/
+/formal/*
+!/formal/README.md
 
 out-statics/
 cache-statics/
