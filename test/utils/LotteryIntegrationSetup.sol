@@ -284,7 +284,7 @@ abstract contract LotteryIntegrationSetup is Test {
     }
 
     function _governanceSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](13);
+        selectors = new bytes4[](18);
         selectors[0] = IGovernance.createLotteryConfig.selector;
         selectors[1] = IGovernance.setLotteryConfigEnabled.selector;
         selectors[2] = IGovernance.setMaxActiveRounds.selector;
@@ -298,6 +298,11 @@ abstract contract LotteryIntegrationSetup is Test {
         selectors[10] = IGovernance.treasuryRecipient.selector;
         selectors[11] = IGovernance.protocolFinalized.selector;
         selectors[12] = IGovernance.finalizeProtocol.selector;
+        selectors[13] = IGovernance.authority.selector;
+        selectors[14] = IGovernance.pendingAuthority.selector;
+        selectors[15] = IGovernance.nominateAuthority.selector;
+        selectors[16] = IGovernance.cancelAuthorityTransfer.selector;
+        selectors[17] = IGovernance.acceptAuthority.selector;
     }
 
     function _lotterySelectors() internal pure returns (bytes4[] memory selectors) {

@@ -27,6 +27,8 @@ library Errors {
     error NoFinalizerCredit();
     error NoWinnerClaim();
     error NoRecipientRevenue();
+    error NoPendingAuthority();
+    error NotPendingAuthority(address caller);
     error NotAuthority(address caller);
     error NotGuardian(address caller);
     error NotRecipient(address caller);

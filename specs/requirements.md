@@ -549,3 +549,20 @@ The normative BONANZA specification is [BONANZA rewards](../docs/bonanza-rewards
 7. THE Lottery SHALL include all unpaid Recipient allocations in solvency and surplus protection, expose them through existing round/accounting views, and emit settlement and delivery amounts.
 8. Restricted BONANZA payouts SHALL permit this fixed-recipient protocol exit without enabling redirected winner, finalizer or staking withdrawals or unrestricted onward transfers. A recipient-directed BONANZA claim SHALL go only to the recipient itself or the Treasury recipient.
 9. This greenfield release SHALL extend configuration, round and accounting structures directly. It SHALL NOT provide legacy ABI adapters, migrations or separate recipient storage domains. Existing deployment defaults SHALL leave the allocation disabled.
+
+
+### Requirement 28: Two-step authority handover
+
+**User Story:** As current protocol governance, I want to hand over Diamond authority to a wallet, multisig, timelock, or DAO executor safely, so that administration can move without a code upgrade or implicit renunciation.
+
+#### Acceptance Criteria
+
+1. ONLY the current authority SHALL nominate, replace, or explicitly cancel a pending authority. Zero-address and Diamond-self nominations SHALL revert. Cancellation without a nominee SHALL revert.
+2. Nomination or cancellation SHALL leave current authority unchanged and grant no powers to a nominee. ONLY the currently nominated nonzero address SHALL accept; replaced, cancelled, unrelated, and already-consumed nominees SHALL NOT accept.
+3. Acceptance SHALL atomically replace current authority and clear pending authority without external receiver callbacks. Every authority check SHALL use the new address immediately. Existing guardian and Treasury roles SHALL NOT move with authority.
+4. Current and pending authority SHALL be publicly readable. Nomination, cancellation, and completed transfer SHALL emit indexed actor addresses sufficient to reconstruct handovers.
+5. Handover SHALL remain available during pause and after irreversible code finalization. No transfer operation SHALL change the cut-disabled latch or re-enable upgrades.
+6. Pending-authority storage SHALL be appended without moving existing Diamond storage fields or changing namespaces. Transfer SHALL NOT modify Round snapshots, integrations, token custody, claims, BONANZA backing, staking, or revenue accounting.
+7. Contract nominees SHALL accept through their own execution mechanism. An existing timelock SHALL govern calls sent by that authority; no second internal timelock, automatic delay, callback, governance implementation, or renunciation path SHALL be added.
+8. Fresh deployment selectors and upgrade preparation SHALL include the handover surface. An already-finalized Diamond without those selectors SHALL NOT acquire them. Upgrade checks SHALL preserve existing state and unrelated selector routes.
+9. Tests SHALL exercise unauthorized/stale callers, executor and timelock handover, old-authority rejection, post-finalization operation, storage/selector preservation, and arbitrary nomination/cancellation/acceptance sequences.

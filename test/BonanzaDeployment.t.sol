@@ -13,6 +13,8 @@ import {
 import { DeployLottery } from "../script/DeployLottery.s.sol";
 import { BonanzaTokenFacet } from "../src/facets/BonanzaTokenFacet.sol";
 import { BonanzaViewFacet } from "../src/facets/BonanzaViewFacet.sol";
+import { IDiamondLoupe } from "../src/interfaces/IDiamondLoupe.sol";
+import { GovernanceSelectors } from "../src/libraries/GovernanceSelectors.sol";
 import { IGovernance } from "../src/interfaces/IGovernance.sol";
 import { LibBonanza } from "../src/libraries/LibBonanza.sol";
 import { Errors } from "../src/shared/Errors.sol";
@@ -93,6 +95,15 @@ contract BonanzaDeploymentTest is Test {
         assertEq(_count(logs, deployment.diamond, IGovernance.LotteryConfigCreated.selector), 2);
         assertEq(_count(logs, deployment.diamond, LibBonanza.BonanzaInitialized.selector), 1);
 
+        assertEq(IGovernance(deployment.diamond).authority(), address(harness));
+        assertEq(IGovernance(deployment.diamond).pendingAuthority(), address(0));
+        bytes4[] memory handover = GovernanceSelectors.handover();
+        for (uint256 i; i < handover.length; ++i) {
+            assertEq(
+                IDiamondLoupe(deployment.diamond).facetAddress(handover[i]),
+                deployment.governanceFacet
+            );
+        }
         assertEq(IERC20Metadata(deployment.diamond).decimals(), 6);
         assertEq(IERC20Metadata(deployment.diamond).name(), "Bonanza");
         assertEq(IERC20Metadata(deployment.diamond).symbol(), "BONANZA");
