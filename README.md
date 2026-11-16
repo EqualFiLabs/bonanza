@@ -38,7 +38,7 @@ The protocol supports concurrent rounds and keeps custody and liabilities
 separate by payment token. Native ETH is not a ticket payment asset. Governance
 controls future configurations and integrations, consumer permissions, and
 optional features. Diamond upgrades remain possible until irreversible code
-finalization; configuration governance remains afterward. The deployment must
+finalization; configuration governance and two-step authority handover remain afterward. The deployment must
 supply the intended external governance delay. See the
 [governance model](docs/governance.md) and [token policy](docs/payment-token-policy.md).
 

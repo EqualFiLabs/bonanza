@@ -64,7 +64,7 @@ The implementation uses stable `keccak256` namespace slots rather than a shared 
 
 | Namespace | Contents |
 |---|---|
-| `statics.lottery.diamond.storage.v1` | selectors, facet indexes, authority, finalization latch |
+| `statics.lottery.diamond.storage.v1` | selectors, facet indexes, authority, finalization latch, pending authority |
 | `statics.lottery.storage.game.v1` | configurations, Rounds, ticket ranges, refund credits, concurrency indexes |
 | `statics.lottery.storage.integration.v1` | append-only Registry/Router versions |
 | `statics.lottery.storage.accounting.v1` | per-token liabilities, versioned Operator buckets, finalizer credits, admitted tokens |
@@ -120,7 +120,8 @@ authority behind an external timelock and review every selector and storage-layo
 Lottery contract itself does not implement that delay.
 
 `finalizeProtocol` irreversibly sets `cutsDisabled`. Afterward every Diamond cut reverts and no
-callable path can restore code mutability. Finalization does not remove ordinary configuration
+callable path can restore code mutability. Two-step authority handover also remains available, without resetting the cut latch.
+Finalization does not remove ordinary configuration
 governance: new immutable versions, enable flags, concurrency, roles, and pause controls remain
 available for future Rounds. Existing Round snapshots and liabilities remain unchanged in either
 case.

@@ -31,3 +31,12 @@ No chain deployment, public conversion activation, AMM construction or sibling-r
 - [x] Let the snapshotted recipient claim its allocation to a receiver it chooses, keeping the BONANZA caller-or-Treasury rule (27.6, 27.8).
 - [x] Retire obsolete ABI upgrade fixtures and preserve historical formal material privately; add current-ABI lifecycle, hostile-token, fuzz and stateful conservation coverage (27.3-27.9).
 - [x] Complete focused checks and local review/remediation; require terminal PR CI before handoff. Existing formal evidence does not establish recipient behavior.
+
+
+## Two-step authority handover (Requirement 28)
+
+- [x] Append pending authority without changing the existing storage prefix; implement views, guarded nomination/replacement/cancellation, nominee-only acceptance and events (28.1-28.6).
+- [x] Install all handover selectors in fresh deployment and update integration fixtures; add guarded calldata-only preparation for an unfinalized existing Diamond (28.8).
+- [x] Cover wallets, executor contracts, real timelock scheduling, stale/unauthorized callers, repeated handovers, and post-finalization administration with fixed cut rejection (28.1-28.7, 28.9).
+- [x] Add previous-surface upgrade regression, independent legacy-slot checks, financial-state preservation and stateful model coverage (28.6, 28.8-28.9).
+- [x] Document operational handover, successor trust, role preservation, and already-finalized deployment limits (28.3-28.8).

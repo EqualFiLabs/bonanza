@@ -20,6 +20,7 @@ import { LotteryInit } from "../src/initializers/LotteryInit.sol";
 import { IClaims } from "../src/interfaces/IClaims.sol";
 import { IDiamondCut } from "../src/interfaces/IDiamondCut.sol";
 import { IDiamondLoupe } from "../src/interfaces/IDiamondLoupe.sol";
+import { GovernanceSelectors } from "../src/libraries/GovernanceSelectors.sol";
 import { IGovernance } from "../src/interfaces/IGovernance.sol";
 import { ILottery } from "../src/interfaces/ILottery.sol";
 import { ILotteryView } from "../src/interfaces/ILotteryView.sol";
@@ -237,22 +238,8 @@ contract DeployLottery is Script {
         selectors[3] = IDiamondLoupe.facetAddress.selector;
     }
 
-    function _governanceSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](14);
-        selectors[0] = IGovernance.createLotteryConfig.selector;
-        selectors[1] = IGovernance.setLotteryConfigEnabled.selector;
-        selectors[2] = IGovernance.setMaxActiveRounds.selector;
-        selectors[3] = IGovernance.integrationConfig.selector;
-        selectors[4] = IGovernance.setIntegrationConfig.selector;
-        selectors[5] = IGovernance.setTreasuryRecipient.selector;
-        selectors[6] = IGovernance.setGuardian.selector;
-        selectors[7] = IGovernance.setPaused.selector;
-        selectors[8] = IGovernance.paused.selector;
-        selectors[9] = IGovernance.guardian.selector;
-        selectors[10] = IGovernance.treasuryRecipient.selector;
-        selectors[11] = IGovernance.protocolFinalized.selector;
-        selectors[12] = IGovernance.finalizeProtocol.selector;
-        selectors[13] = IGovernance.createRewardLotteryConfig.selector;
+    function _governanceSelectors() internal pure returns (bytes4[] memory) {
+        return GovernanceSelectors.all();
     }
 
     function _lotterySelectors() internal pure returns (bytes4[] memory selectors) {

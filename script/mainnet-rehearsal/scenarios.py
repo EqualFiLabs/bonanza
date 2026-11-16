@@ -830,7 +830,22 @@ class Campaign(Rehearsal):
         self.tx(f.diamondCut([(helper.address, 0, [selector])], ZERO, b""), error="CutsDisabled()")
         self.tx(f.finalizeProtocol(), error="AlreadyFinalized()")
         self.tx(f.setMaxActiveRounds(100))
-        self.result("governance and exit liveness", "pause-safe deadline settlement; cuts finalized, configuration retained")
+        require(self.call(f.authority()) == self.owner and self.call(f.pendingAuthority()) == ZERO,
+                "Unexpected handover state")
+        self.tx(f.nominateAuthority(self.alice))
+        self.tx(f.cancelAuthorityTransfer())
+        self.tx(f.acceptAuthority(), self.alice, error="NotPendingAuthority(address)")
+        self.tx(f.nominateAuthority(self.bob))
+        self.tx(f.acceptAuthority(), self.alice, error="NotPendingAuthority(address)")
+        before_handover = self.financial_state()
+        self.tx(f.acceptAuthority(), self.bob)
+        require(self.call(f.authority()) == self.bob and self.call(f.pendingAuthority()) == ZERO,
+                "Authority handover failed")
+        require(self.financial_state() == before_handover, "Authority handover changed financial state")
+        self.tx(f.setMaxActiveRounds(99), error="NotAuthority(address)")
+        self.tx(f.setMaxActiveRounds(100), self.bob)
+        self.tx(f.diamondCut([], ZERO, b""), self.bob, error="CutsDisabled()")
+        self.result("governance and exit liveness", "pause-safe settlement; finalized cuts; two-step authority handover")
 
     def boundaries(self):
         f = self.lottery.functions

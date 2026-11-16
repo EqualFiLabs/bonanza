@@ -25,6 +25,8 @@ library LibDiamond {
         address[] facetAddresses;
         address authority;
         bool cutsDisabled;
+        // Append-only: preserve the authority and finalization flag offsets.
+        address pendingAuthority;
     }
 
     function diamondStorage() internal pure returns (DiamondStorage storage ds) {

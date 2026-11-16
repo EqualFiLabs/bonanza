@@ -20,6 +20,41 @@ contract GovernanceFacet is IGovernance {
         _;
     }
 
+    function authority() external view returns (address) {
+        return LibDiamond.authority();
+    }
+
+    function pendingAuthority() external view returns (address) {
+        return LibDiamond.diamondStorage().pendingAuthority;
+    }
+
+    /// @notice Nomination grants no powers; only the nominee may complete the handover.
+    function nominateAuthority(address nominee) external onlyAuthority {
+        if (nominee == address(0) || nominee == address(this)) revert Errors.InvalidAddress();
+        LibDiamond.diamondStorage().pendingAuthority = nominee;
+        emit AuthorityTransferNominated(LibDiamond.authority(), nominee);
+    }
+
+    function cancelAuthorityTransfer() external onlyAuthority {
+        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
+        address nominee = ds.pendingAuthority;
+        if (nominee == address(0)) revert Errors.NoPendingAuthority();
+        ds.pendingAuthority = address(0);
+        emit AuthorityTransferCancelled(ds.authority, nominee);
+    }
+
+    /// @notice Available after code finalization; does not change the cut-disabled latch.
+    function acceptAuthority() external {
+        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
+        if (ds.pendingAuthority == address(0) || msg.sender != ds.pendingAuthority) {
+            revert Errors.NotPendingAuthority(msg.sender);
+        }
+        address previousAuthority = ds.authority;
+        ds.authority = msg.sender;
+        ds.pendingAuthority = address(0);
+        emit AuthorityTransferred(previousAuthority, msg.sender);
+    }
+
     function createLotteryConfig(LotteryConfig calldata config)
         external
         onlyAuthority

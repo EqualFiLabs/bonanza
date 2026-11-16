@@ -7,7 +7,8 @@ verification evidence. It does not assert production readiness.
 
 The current candidate includes deadline draws, backed BONANZA inventory and
 PositionNFT accounts, staking and Operator boosts, and optional round-recipient
-allocations. It uses Bonanza/BONANZA names and the matching current ABI.
+allocations and two-step authority handover. It uses Bonanza/BONANZA names and
+the matching current ABI.
 
 This is a fresh-deployment candidate. Historical finalized Diamonds are not
 updated by the source changes. Clients must use the matching interfaces,

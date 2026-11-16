@@ -7,7 +7,8 @@ made permanently immutable while the protocol continues to create and operate ne
 
 The Diamond stores one `authority` address at construction. Production deployment is expected to
 set it to an external timelock or governance executor. The Lottery does not implement an internal
-delay, proposal system, voting system, multisig, or authority-transfer function.
+delay, proposal system, voting system, or multisig. Authority can be transferred through
+the two-step process below.
 
 Every authority-gated call is immediate once the authority invokes the Diamond. The safety delay
 therefore belongs to the external authority contract and must be validated at deployment. Using an
@@ -15,6 +16,7 @@ EOA would remove that operational delay.
 
 The authority may:
 
+- nominate, replace, or cancel a pending successor;
 - add, replace, or remove facet selectors before finalization;
 - execute an initializer during a Diamond cut;
 - create immutable Round Configuration Versions, including explicit BONANZA reward settings;
@@ -29,6 +31,85 @@ The authority may:
 Before code finalization, this role can install arbitrary delegatecall logic. It is consequently
 trusted not to mutate live Round snapshots, corrupt namespaced storage, erase liabilities, or
 redirect custody. A timelock makes a proposed change observable; it does not make unsafe code safe.
+
+## Two-step authority transfer
+
+`authority()` returns the active authority, and `pendingAuthority()` returns the
+current nominee or zero. The active authority calls `nominateAuthority(nominee)`;
+only that exact address may call `acceptAuthority()`. Until acceptance succeeds,
+the active authority retains every power and the nominee has none. Acceptance
+replaces authority and clears the nomination atomically, with no receiver callback.
+
+The active authority may replace a nominee by nominating another address, or call
+`cancelAuthorityTransfer()` to clear it. Replaced and cancelled nominees cannot
+accept. Zero and the Diamond itself cannot be nominated. Empty cancellation and
+acceptance without a matching nomination revert. There is no implicit renunciation.
+
+`AuthorityTransferNominated`, `AuthorityTransferCancelled`, and
+`AuthorityTransferred` expose both actor addresses as indexed event fields.
+Each nomination event records the newly selected pending authority, including
+replacement. Read both views again before signing or executing acceptance.
+
+### Operational handover
+
+1. Verify the Diamond, chain, active authority, and successor's exact address and
+   execution capability. For a governance executor, review its owners, thresholds,
+   proposers, executors, delay, recovery, and upgrade powers.
+2. Have current authority execute `nominateAuthority(successor)` against the
+   Diamond. An EOA sends the call directly; a multisig approves and executes it;
+   a timelock schedules and executes it under its existing rules.
+3. Confirm the current authority is unchanged and `pendingAuthority()` is the
+   intended successor. If incorrect, current authority replaces or cancels it.
+4. Have the successor execute `acceptAuthority()` against the Diamond. An EOA
+   sends the call directly; the nominated multisig, timelock, or DAO executor
+   executes it from its own address. A signer or proposer calling directly does
+   not represent that contract.
+5. Confirm `authority()` is the successor and pending authority is zero. Verify
+   an intended governance action through the successor and that predecessor
+   authority permissions are gone.
+
+The protocol adds no second delay and does not certify the successor's governance
+quality. An EOA successor has immediate powers; preserving an external timelock
+is an operational responsibility. Pending transfers have no expiry: if the
+nominee never accepts, existing governance remains in control and may cancel.
+Both actions and their address linkage are public and callable directly without
+a hosted coordinator. Lost governance keys have no protocol recovery bypass.
+
+Handover remains available while paused and after code finalization. It never
+resets `cutsDisabled`. It transfers no guardian or Treasury role, snapshot,
+integration, balance, claim, reserve, stake, or revenue entitlement. A former
+authority that is also guardian retains its independent ability to pause, but
+cannot unpause or use authority powers after handover. Existing settlement and
+liability-reducing exits remain available under their original conditions.
+
+### Installing the handover surface
+
+Fresh deployments install all nineteen governance selectors. For an existing
+unfinalized Diamond with the previous fourteen-selector governance facet, use
+`script/PrepareAuthorityTransferUpgrade.s.sol` to prepare the cut calldata. The
+replacement facet must first be deployed and verified under the release process,
+with embedded IPFS/CBOR metadata and full-match explorer verification. Check its
+source, runtime, and all nineteen selectors before authorizing the cut.
+
+The builder reads `LOTTERY_DIAMOND` and `LOTTERY_GOVERNANCE_FACET`, checks that the
+existing governance routes are installed together and the five new routes are
+absent, and returns calldata replacing fourteen routes and adding five. It
+neither deploys nor broadcasts. Run it against the intended chain using the
+configured private RPC environment, for example:
+
+```sh
+forge script script/PrepareAuthorityTransferUpgrade.s.sol:PrepareAuthorityTransferUpgrade --rpc-url "$ROBINHOOD_MAINNET"
+```
+
+Review the returned calldata and submit it through the current authority's normal
+execution process, without an initializer. Confirm all nineteen governance
+selectors route to the verified replacement and unrelated routes/state remain
+unchanged. Split or partially installed governance surfaces require separate
+review; the builder refuses to guess their intended migration.
+
+An already-finalized Diamond that lacks these selectors cannot gain this feature.
+Finalization must follow installation when future handover is required. Historical
+deployment manifests remain records of their original installed selectors.
 
 ## Round Configuration Versions
 

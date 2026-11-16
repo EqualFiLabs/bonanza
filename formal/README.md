@@ -20,7 +20,7 @@ remain bound to the privately retained evidence.
 ## Current candidate
 
 Historical results do **not** qualify the optional recipient allocation, current
-ABI and storage layout, or renamed release. No current-candidate formal sign-off
+ABI and storage layout, renamed release, or two-step authority handover. No current-candidate formal sign-off
 is asserted here. Compilation, tests, CI, fork execution, and live deployment
 checks are separate evidence, as described in the
 [release checkpoint](../docs/release-checkpoint.md).

@@ -19,6 +19,15 @@ interface IGovernance {
     event GuardianUpdated(address indexed previousGuardian, address indexed newGuardian);
     event PauseStateUpdated(bool paused);
     event ProtocolFinalized();
+    event AuthorityTransferNominated(address indexed authority, address indexed pendingAuthority);
+    event AuthorityTransferCancelled(address indexed authority, address indexed pendingAuthority);
+    event AuthorityTransferred(address indexed previousAuthority, address indexed newAuthority);
+
+    function authority() external view returns (address);
+    function pendingAuthority() external view returns (address);
+    function nominateAuthority(address nominee) external;
+    function cancelAuthorityTransfer() external;
+    function acceptAuthority() external;
 
     function createLotteryConfig(LotteryConfig calldata config) external returns (uint64 version);
     function createRewardLotteryConfig(

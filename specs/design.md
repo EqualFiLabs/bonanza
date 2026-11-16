@@ -317,6 +317,65 @@ Created Round Configuration Versions are immutable. Disabling a version prevents
 
 `setPaused(true)` may be called by either the timelocked authority or guardian. `setPaused(false)` may only be called by timelocked authority.
 
+### Two-step authority handover (Requirement 28)
+
+The governance facet exposes:
+
+```solidity
+function authority() external view returns (address);
+function pendingAuthority() external view returns (address);
+function nominateAuthority(address nominee) external;
+function cancelAuthorityTransfer() external;
+function acceptAuthority() external;
+```
+
+Append `address pendingAuthority` after `bool cutsDisabled` in
+`LibDiamond.DiamondStorage`. The mappings, facet array, authority, and finalization
+flag keep their existing slots and offsets; the new address occupies the next
+slot and starts at zero. No initializer or storage migration is needed.
+
+Only current authority may nominate or replace a nonzero address other than the
+Diamond, or cancel an existing nomination. No nominee receives powers before
+acceptance. Acceptance requires the current pending address as `msg.sender`,
+atomically writes it as authority and clears pending state. These operations
+make no external calls and touch no other namespace or finalization state.
+`NoPendingAuthority()` identifies an empty cancellation, and
+`NotPendingAuthority(address)` rejects invalid acceptance. Invalid nominations
+use `InvalidAddress()`.
+
+Emit `AuthorityTransferNominated(authority, pendingAuthority)`,
+`AuthorityTransferCancelled(authority, pendingAuthority)`, and
+`AuthorityTransferred(previousAuthority, newAuthority)`, with both addresses
+indexed. The first event also records replacement nominations. Views reveal the
+current state without reconstructing event history.
+
+Handover is independent of pause and the irreversible cut latch. If the former
+authority is separately guardian, it keeps only that guardian role, including
+pause-only permission. Treasury and all other roles and liabilities remain as
+configured. New authority has the same powers and trust obligations as its
+predecessor, including pre-finalization upgrade power.
+
+`GovernanceSelectors` supplies the existing fourteen selectors and five handover
+selectors for fresh deployment and upgrade preparation. The calldata-only
+`PrepareAuthorityTransferUpgrade` tool rejects finalized Diamonds, missing or
+split existing governance routes, preinstalled new selectors, and invalid
+replacement targets. It prepares a replacement of the existing routes and
+addition of the five new routes, without an initializer, deployment or broadcast.
+An operator must separately verify the intended replacement implementation and
+submit the cut through current governance before finalization.
+
+EOAs accept directly; a multisig or DAO executor must execute the acceptance call
+itself. A timelock schedules and executes its own calls using its existing delay.
+No internal delay enforces the quality of the successor: selecting and securing
+the intended governance executor remains the current authority's responsibility.
+Nomination and acceptance are public onchain state and events, and require no
+hosted service or relayer. Failure to accept leaves existing governance in place.
+
+Tests cover Requirements 28.1-28.9 using actual Diamond dispatch, funded token and
+staking fixtures, a previous governance-surface fixture, a real timelock, a
+contract executor, and a handler-driven authority/finalization model. Financial
+state hashes and independent legacy slot checks supplement the transition tests.
+
 ### Code Finalization
 
 ```solidity
@@ -343,7 +402,7 @@ settlement         remains available
 deadline draws     remain available
 ```
 
-Governance may separately be renounced later if a fully governance-free deployment is desired, but that is not required for V1.
+Authority may be handed over in two steps after finalization. No in-Diamond renunciation is provided; external governance may separately become inoperable, with the risks documented in the governance guide.
 
 ### Upgrade Trust Boundary
 
@@ -1350,7 +1409,7 @@ Guardian pause: enabled
 
 ## Optional Stage 3: Fully Governance-Free
 
-If desired in the future, governance may separately remove or renounce the authority controlling the remaining configuration surface. This is deliberately separate from Diamond code finalization.
+Two-step authority handover remains available for the configuration surface after code finalization. It does not renounce governance; any external governance renunciation is a separate decision outside this interface.
 
 # Events
 
