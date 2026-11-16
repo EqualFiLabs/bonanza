@@ -5,7 +5,7 @@
 3. Extend immutable configurations and both purchase entrypoints with account attribution.
 4. Book staker revenue at every purchase, list revenue assets at configuration creation (at most 64), and settle the booked staker total without calling Statics.
 5. Add staking with complete one-call checkpoints across all revenue assets and a 24-hour unstake lock with a stake-weighted reset.
-6. Add unique Operator registration validated at every checkpoint by direct activation and ownership reads, forfeiting invalid boost excess to other stakers.
+6. Add unique Operator registration validated at every checkpoint by direct activation and ownership reads, crediting invalid boost excess to Treasury.
 7. Restrict BONANZA withdrawals to the PositionNFT owner and BONANZA payouts to the caller, Treasury or the dedicated snapshotted Round Recipient, and require a consumer Router for BONANZA-priced Operator revenue.
 8. Expose a per-account nonce for PositionNFT market buyer protection.
 9. Initialize BONANZA in the same transaction as the deployment Diamond cut.
@@ -16,7 +16,7 @@ No chain deployment, public conversion activation, AMM construction or sibling-r
 - [x] Mint fully backed BONANZA reward inventory at reserve funding, distribute existing units for participation, and protect inventory from surplus without double-counting STATICS backing.
 - [x] Book staker revenue at purchase and remove the Statics transfer-history dependency.
 - [x] Lock unstaking for 24 hours with a stake-weighted reset on top-ups.
-- [x] Validate Operator boosts by direct reads and forfeit invalid boost excess.
+- [x] Validate Operator boosts by direct reads and credit invalid boost excess to Treasury.
 - [x] Restrict BONANZA payouts and require a consumer Router for BONANZA Operator revenue.
 - [x] Expose the per-account nonce.
 - [x] Initialize BONANZA with the deployment Diamond cut.

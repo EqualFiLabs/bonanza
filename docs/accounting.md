@@ -255,9 +255,9 @@ Staker revenue is booked at purchase. With positive total weight the share is ad
 `bonanzaRevenueReserved(asset)` and to the asset's index; with zero weight it goes to Treasury.
 Escrow and reserved revenue therefore both change at purchase, and settlement releases only
 `receipts - stakerAccrued` from escrow. Claims reduce reserved. Whole units of index division
-dust reduce reserved and increase Treasury. A forfeited boost excess moves between accounts
-through the index, or to Treasury when no other weight exists; it never leaves reserved
-otherwise. Each account retains fractional entitlement while active. Explicit empty-account
+dust reduce reserved and increase Treasury. A forfeited boost excess reduces reserved and
+increases Treasury availability without changing other accounts' index accrual. Each account
+retains fractional entitlement while active. Explicit empty-account
 cleanup surrenders only fractions below one base unit. Historical fractions and index dust never
 enter a later index.
 

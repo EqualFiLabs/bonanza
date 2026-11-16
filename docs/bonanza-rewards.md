@@ -167,14 +167,14 @@ When the boost is invalid, for each listed asset:
 1. Split the accrual since `paidIndex` into a base part `staked * delta` and an excess
    `(weight - staked) * delta`, both RAY-scaled.
 2. Credit the base part to the account with the usual remainder handling.
-3. Redistribute the excess to the other stakers:
-   `index += excess / (totalWeight - accountWeight)`, with the division remainder handled as
-   dust. With no other weight, the excess goes to Treasury.
-4. Set the account's `paidIndex` to the index after redistribution, so it receives no part
-   of its own forfeit.
+3. Reduce reserved staker revenue by the whole-token excess and credit it to Treasury. Add the
+   fractional excess to global dust; any whole unit formed by accumulated dust also goes to
+   Treasury. Other stakers' revenue index does not change.
+4. Set the account's `paidIndex` to the current index, so it receives no part of its own forfeit.
 
 The registration and the Operator mapping are then cleared, weight returns to stake, total
-weight is updated and `BonanzaBoostForfeited` is emitted per asset with the forfeited amount.
+weight is updated and `BonanzaBoostForfeited` is emitted per asset with the forfeited whole-token
+amount. The credit is paid to the configured Treasury recipient by a separate `flushTreasury` call.
 The forfeit covers the whole boosted excess since the account's last checkpoint, including
 excess earned before the transfer. Excess booked by a checkpoint before either NFT changes
 hands is kept.

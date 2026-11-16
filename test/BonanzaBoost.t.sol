@@ -19,7 +19,7 @@ contract BonanzaBoostTest is BonanzaRevenueSetup {
         assertEq(_earned(2, address(tokenB)), 44);
     }
 
-    function testOperatorTransferForfeitsBoostExcessToOtherStakers() public {
+    function testOperatorTransferCreditsBoostExcessToTreasury() public {
         _bookedWithBoost();
         vm.prank(alice);
         operators.transferFrom(alice, carol, 1);
@@ -27,8 +27,9 @@ contract BonanzaBoostTest is BonanzaRevenueSetup {
         // The view already reports what a claim would pay after the forfeit.
         assertEq(_earned(1, address(tokenB)), 44);
 
-        vm.expectEmit(true, true, true, false, address(diamond));
-        emit LibBonanzaStaking.BonanzaBoostForfeited(1, 1, address(tokenB), 0, 0);
+        uint256 indexBefore = bonanzaView.bonanzaAsset(address(tokenB)).indexRay;
+        vm.expectEmit(true, true, true, true, address(diamond));
+        emit LibBonanzaStaking.BonanzaBoostForfeited(1, 1, address(tokenB), 11, indexBefore);
         vm.expectEmit(true, true, false, false, address(diamond));
         emit LibBonanzaStaking.BonanzaBoostRevoked(1, 1);
         vm.prank(carol);
@@ -40,16 +41,24 @@ contract BonanzaBoostTest is BonanzaRevenueSetup {
         (uint256 totalWeight,,) = bonanzaView.bonanzaStaking();
         assertEq(totalWeight, 200);
         assertEq(bonanzaView.bonanzaCredit(1, address(tokenB)).claimable, 44);
-        assertEq(_earned(2, address(tokenB)), 55);
-        assertEq(bonanzaView.bonanzaAsset(address(tokenB)).reserved, 100);
+        assertEq(_earned(2, address(tokenB)), 44);
+        assertEq(bonanzaView.bonanzaAsset(address(tokenB)).indexRay, indexBefore);
+        assertEq(bonanzaView.bonanzaAsset(address(tokenB)).reserved, 89);
+        assertEq(stateView.assetAccounting(address(tokenB)).treasuryAvailable, 11);
+        staking.checkpointBonanzaAccount(1);
+        assertEq(stateView.assetAccounting(address(tokenB)).treasuryAvailable, 11);
         _assertConserved(address(tokenB));
 
         _settle(address(tokenB), false); // 100 more units at 100:100
         vm.prank(alice);
         assertEq(staking.claimBonanzaRevenue(1, address(tokenB), alice), 94);
         vm.prank(bob);
-        assertEq(staking.claimBonanzaRevenue(2, address(tokenB), bob), 105);
+        assertEq(staking.claimBonanzaRevenue(2, address(tokenB), bob), 94);
         assertEq(bonanzaView.bonanzaAsset(address(tokenB)).reserved, 1);
+        uint256 treasuryBefore = tokenB.balanceOf(treasury);
+        assertEq(revenue.flushTreasury(address(tokenB), 11), 11);
+        assertEq(tokenB.balanceOf(treasury), treasuryBefore + 11);
+        assertEq(stateView.assetAccounting(address(tokenB)).treasuryAvailable, 0);
         _assertConserved(address(tokenB));
         assertEq(revenue.availableTokenSurplus(address(tokenB)), 0);
     }
@@ -66,7 +75,8 @@ contract BonanzaBoostTest is BonanzaRevenueSetup {
         assertEq(tokenB.balanceOf(carol), before + 44);
         assertFalse(bonanzaView.bonanzaAccount(1).registered);
         assertEq(bonanzaView.bonanzaAccount(1).weight, 100);
-        assertEq(_earned(2, address(tokenB)), 55);
+        assertEq(_earned(2, address(tokenB)), 44);
+        assertEq(stateView.assetAccounting(address(tokenB)).treasuryAvailable, 11);
         _assertConserved(address(tokenB));
     }
 
@@ -86,8 +96,54 @@ contract BonanzaBoostTest is BonanzaRevenueSetup {
         (uint256 totalWeight,,) = bonanzaView.bonanzaStaking();
         assertEq(totalWeight, 210);
         assertEq(bonanzaView.bonanzaCredit(1, address(tokenB)).claimable, 44);
-        // Bob receives Alice's forfeited excess at his pre-registration weight.
-        assertEq(bonanzaView.bonanzaCredit(2, address(tokenB)).claimable, 55);
+        // Bob retains only the revenue earned at his original weight.
+        assertEq(bonanzaView.bonanzaCredit(2, address(tokenB)).claimable, 44);
+        assertEq(stateView.assetAccounting(address(tokenB)).treasuryAvailable, 11);
+        _assertConserved(address(tokenB));
+    }
+
+    function testLateStakeCannotCaptureForfeitedBoostRevenue() public {
+        _bookedWithBoost();
+        vm.prank(alice);
+        operators.transferFrom(alice, carol, 1);
+        positions.mint(carol, 3);
+        tokenA.mint(carol, 900);
+        vm.prank(carol);
+        tokenA.approve(address(diamond), 900);
+        _wrap(3, carol, 900);
+        vm.prank(carol);
+        staking.stakeBonanza(3, 900);
+
+        uint256 indexBefore = bonanzaView.bonanzaAsset(address(tokenB)).indexRay;
+        staking.checkpointBonanzaAccount(1);
+        assertEq(bonanzaView.bonanzaAsset(address(tokenB)).indexRay, indexBefore);
+        assertEq(_earned(1, address(tokenB)), 44);
+        assertEq(_earned(2, address(tokenB)), 44);
+        assertEq(_earned(3, address(tokenB)), 0);
+        assertEq(stateView.assetAccounting(address(tokenB)).treasuryAvailable, 11);
+        assertEq(bonanzaView.bonanzaAsset(address(tokenB)).reserved, 89);
+        _assertConserved(address(tokenB));
+        assertEq(revenue.availableTokenSurplus(address(tokenB)), 0);
+    }
+
+    function testForfeitCreditsEachAssetToTreasury() public {
+        _start();
+        skip(LibBonanzaStaking.STAKE_LOCK);
+        _settle(address(tokenA), false);
+        _settle(address(tokenB), false);
+        vm.prank(alice);
+        operators.transferFrom(alice, carol, 1);
+        staking.checkpointBonanzaAccount(1);
+
+        assertEq(_earned(1, address(tokenA)), 44);
+        assertEq(_earned(1, address(tokenB)), 44);
+        assertEq(_earned(2, address(tokenA)), 44);
+        assertEq(_earned(2, address(tokenB)), 44);
+        assertEq(stateView.assetAccounting(address(tokenA)).treasuryAvailable, 11);
+        assertEq(stateView.assetAccounting(address(tokenB)).treasuryAvailable, 11);
+        assertEq(bonanzaView.bonanzaAsset(address(tokenA)).reserved, 89);
+        assertEq(bonanzaView.bonanzaAsset(address(tokenB)).reserved, 89);
+        _assertConserved(address(tokenA));
         _assertConserved(address(tokenB));
     }
 
@@ -165,7 +221,8 @@ contract BonanzaBoostTest is BonanzaRevenueSetup {
             assertNotEq(bonanzaView.bonanzaOperatorAccount(1), 1);
             BonanzaCredit memory credit = bonanzaView.bonanzaCredit(1, address(tokenB));
             assertEq(credit.claimable + tokenB.balanceOf(address(0xA11CE)), 44);
-            assertEq(_earned(2, address(tokenB)), 55);
+            assertEq(_earned(2, address(tokenB)), 44);
+            assertEq(stateView.assetAccounting(address(tokenB)).treasuryAvailable, 11);
             _assertConserved(address(tokenB));
         }
     }
