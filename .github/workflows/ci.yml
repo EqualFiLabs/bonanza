@@ -27,6 +27,10 @@ jobs:
           bash -n script/mainnet-rehearsal/run.sh
           python3 -m py_compile script/mainnet-rehearsal/*.py
           python3 -m unittest discover -s script/mainnet-rehearsal -p 'test_*.py' -v
+      - name: Check deployment preflight
+        run: |
+          python3 -m py_compile script/deployment-preflight/*.py
+          python3 -m unittest discover -s script/deployment-preflight -p 'test_*.py' -v
   foundry:
     name: Foundry
     runs-on: ubuntu-latest
