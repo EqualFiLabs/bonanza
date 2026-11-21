@@ -81,6 +81,9 @@ absent; a passing ordinary test run does not establish fork qualification.
 Fork execution is described separately in the
 [local rehearsal guide](script/mainnet-rehearsal/README.md). No deployment or
 live transaction is needed for the ordinary build and test commands above.
+Before a fresh deployment, use the read-only
+[dependency preflight](script/deployment-preflight/README.md) with a reviewed
+target-chain manifest. It does not replace post-deployment verification.
 
 ## Documentation
 
