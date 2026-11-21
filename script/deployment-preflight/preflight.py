@@ -26,6 +26,19 @@ HASH = re.compile(r"0x[0-9a-fA-F]{64}\Z")
 STATICS_EXTERNAL_MODULE_INTERFACE = "2795ac62"
 
 
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def parse_manifest(source):
+    return validate_manifest(json.loads(source, object_pairs_hook=_unique_object))
+
+
 def validate_manifest(manifest):
     """Reject incomplete or ambiguous expectations before making any RPC call."""
     if (not isinstance(manifest, dict) or not isinstance(manifest.get("chainId"), int)
@@ -176,7 +189,7 @@ def main(argv=None):
                         help="name of an environment variable containing the RPC URL")
     args = parser.parse_args(argv)
     try:
-        manifest = validate_manifest(json.loads(args.manifest.read_text()))
+        manifest = parse_manifest(args.manifest.read_text())
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"Invalid preflight manifest: {exc}", file=sys.stderr)
         return 2

@@ -1,11 +1,16 @@
 """Offline checks for the read-only deployment preflight."""
 
+import io
+import json
+import tempfile
 import unittest
+from contextlib import redirect_stderr
+from pathlib import Path
 
 from web3 import Web3
 from web3.providers.base import BaseProvider
 
-from preflight import _call, check, validate_manifest
+from preflight import _call, check, main, parse_manifest, validate_manifest
 
 
 NAMES = (
@@ -229,6 +234,32 @@ class DeploymentPreflightTest(unittest.TestCase):
         config["rewardAssets"] = ["missing"]
         with self.assertRaisesRegex(ValueError, "rewardAssets"):
             validate_manifest(config)
+
+    def test_manifest_rejects_duplicate_keys_at_every_depth(self):
+        source = json.dumps(manifest())
+        self.assertEqual(parse_manifest(source), manifest())
+        duplicates = (
+            ('"rewardAssets": ["statics"]',
+             '"rewardAssets": ["statics"], "rewardAssets": []', "rewardAssets"),
+            ('"minimumAuthorityDelaySeconds": 86400',
+             '"minimumAuthorityDelaySeconds": 86400, "minimumAuthorityDelaySeconds": 1',
+             "minimumAuthorityDelaySeconds"),
+            ('"runtimeCodeHash": "' + CODE_HASH + '"',
+             '"runtimeCodeHash": "' + CODE_HASH + '", "runtimeCodeHash": "' + CODE_HASH + '"',
+             "runtimeCodeHash"),
+        )
+        for old, new, key in duplicates:
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, f"duplicate JSON key: {key}"):
+                parse_manifest(source.replace(old, new, 1))
+
+    def test_cli_rejects_duplicate_manifest_before_rpc(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.json"
+            path.write_text('{"chainId": 4663, "chainId": 1}')
+            error = io.StringIO()
+            with redirect_stderr(error):
+                self.assertEqual(main(["--manifest", str(path), "--rpc-env", "UNSET_PREFLIGHT_RPC"]), 2)
+            self.assertIn("duplicate JSON key: chainId", error.getvalue())
 
 
 if __name__ == "__main__":

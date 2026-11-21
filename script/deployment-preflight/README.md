@@ -11,7 +11,8 @@ deploy a Diamond or qualify one after deployment.
 Create a private JSON file with the following shape. Replace every placeholder
 with an address or runtime code hash verified from the intended chain's source
 and deployment manifest. Do not commit private RPC endpoints or unreviewed
-deployment choices.
+deployment choices. Duplicate JSON keys are rejected, including keys inside
+contract entries, so later values cannot silently replace reviewed expectations.
 
 ```json
 {
