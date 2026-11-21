@@ -3,6 +3,7 @@
 import unittest
 
 from web3 import Web3
+from web3.providers.base import BaseProvider
 
 from preflight import check, validate_manifest
 
@@ -39,8 +40,10 @@ class FakeEth:
         self.delay = 86400
         self.binding_override = None
         self.read_blocks = []
+        self.state_refs = []
         self.block_hashes = [bytes.fromhex("aa" * 32)]
         self.block_hash_reads = 0
+        self.supports_hash_refs = True
 
     def get_block(self, block):
         self.read_blocks.append(block)
@@ -49,11 +52,15 @@ class FakeEth:
         return {"hash": self.block_hashes[index]}
 
     def get_code(self, address, block_identifier=None):
-        self.read_blocks.append(block_identifier)
+        self.state_refs.append(block_identifier)
+        if not self.supports_hash_refs:
+            raise RuntimeError("EIP-1898 unsupported")
         return self.code
 
     def call(self, tx, block_identifier=None):
-        self.read_blocks.append(block_identifier)
+        self.state_refs.append(block_identifier)
+        if not self.supports_hash_refs:
+            raise RuntimeError("EIP-1898 unsupported")
         selector = bytes(tx["data"][:4])
         signature = lambda text: Web3.keccak(text=text)[:4]
         if selector == signature("supportsInterface(bytes4)"):
@@ -82,14 +89,40 @@ class FakeWeb3:
         self.eth = FakeEth(config)
 
 
+class RecordingProvider(BaseProvider):
+    def __init__(self):
+        super().__init__()
+        self.requests = []
+
+    def make_request(self, method, params):
+        self.requests.append((method, params))
+        result = "0x1" if method == "eth_chainId" else "0x"
+        return {"jsonrpc": "2.0", "id": 1, "result": result}
+
+
 class DeploymentPreflightTest(unittest.TestCase):
+    def test_web3_sends_eip_1898_block_hash_for_code_and_calls(self):
+        provider = RecordingProvider()
+        w3 = Web3(provider)
+        address = Web3.to_checksum_address("0x" + "11" * 20)
+        ref = {"blockHash": "0x" + "aa" * 32, "requireCanonical": True}
+        w3.eth.get_code(address, block_identifier=ref)
+        w3.eth.call({"to": address, "data": "0x"}, block_identifier=ref,
+                    ccip_read_enabled=False)
+        state_reads = [params for method, params in provider.requests
+                       if method in ("eth_getCode", "eth_call")]
+        self.assertEqual([params[1] for params in state_reads], [ref, ref])
+
     def test_valid_candidate_reads_one_block_without_transactions(self):
         config = validate_manifest(manifest())
         w3 = FakeWeb3(config)
         self.assertEqual(check(config, w3), [])
-        self.assertTrue(w3.eth.read_blocks)
         self.assertEqual(set(w3.eth.read_blocks), {123})
         self.assertEqual(w3.eth.block_hash_reads, 2)
+        self.assertTrue(w3.eth.state_refs)
+        self.assertTrue(all(ref == {"blockHash": "0x" + "aa" * 32,
+                                    "requireCanonical": True}
+                            for ref in w3.eth.state_refs))
 
     def test_replaced_block_height_fails_after_reads(self):
         config = manifest()
@@ -99,6 +132,23 @@ class DeploymentPreflightTest(unittest.TestCase):
                          ["block hash: selected height changed during preflight"])
         self.assertEqual(set(w3.eth.read_blocks), {123})
         self.assertEqual(w3.eth.block_hash_reads, 2)
+
+    def test_endpoint_without_hash_pinned_reads_cannot_pass(self):
+        config = manifest()
+        w3 = FakeWeb3(config)
+        w3.eth.supports_hash_refs = False
+        failures = check(config, w3)
+        self.assertIn("registry: code read failed", failures)
+        self.assertIn("authority: getMinDelay() read failed", failures)
+        self.assertEqual(set(w3.eth.read_blocks), {123})
+
+    def test_zero_operator_assets_skip_router_readiness(self):
+        config = manifest()
+        config["rewardAssets"] = []
+        validate_manifest(config)
+        w3 = FakeWeb3(config)
+        w3.eth.router_ready = False
+        self.assertEqual(check(config, w3), [])
 
     def test_unavailable_block_hash_fails_closed(self):
         config = manifest()

@@ -48,8 +48,8 @@ def validate_manifest(manifest):
             raise ValueError(f"contracts.{name}.address cannot be zero")
 
     assets = manifest.get("rewardAssets")
-    if not isinstance(assets, list) or not assets:
-        raise ValueError("rewardAssets must contain at least one contract name")
+    if not isinstance(assets, list):
+        raise ValueError("rewardAssets must be a list of contract names")
     if (any(not isinstance(asset, str) for asset in assets)
             or len(set(assets)) != len(assets)
             or any(asset not in contracts for asset in assets)):
@@ -102,11 +102,12 @@ def check(manifest, w3):
         original_hash = _block_hash(w3, block)
     except Exception:
         return failures + ["block hash: initial RPC read failed"]
+    block_ref = {"blockHash": "0x" + original_hash.hex(), "requireCanonical": True}
 
     for name, entry in contracts.items():
         try:
             code = bytes(w3.eth.get_code(Web3.to_checksum_address(entry["address"]),
-                                         block_identifier=block))
+                                         block_identifier=block_ref))
             if not code:
                 failures.append(f"{name}: no contract code")
             elif Web3.keccak(code).hex().removeprefix("0x").lower() != entry["runtimeCodeHash"][2:].lower():
@@ -116,7 +117,7 @@ def check(manifest, w3):
 
     position = contracts["positionNFT"]["address"]
     try:
-        result = _call(w3, block, position, "supportsInterface(bytes4)",
+        result = _call(w3, block_ref, position, "supportsInterface(bytes4)",
                        "0x" + STATICS_EXTERNAL_MODULE_INTERFACE)
         if result != 1:
             failures.append("positionNFT: Statics external-module interface unsupported")
@@ -126,35 +127,36 @@ def check(manifest, w3):
     router = contracts["router"]["address"]
     for name in ROUTER_BINDINGS:
         try:
-            actual = _call(w3, block, router, f"{name}()")
+            actual = _call(w3, block_ref, router, f"{name}()")
             expected = int(contracts[name]["address"], 16)
             if actual != expected:
                 failures.append(f"router: {name} binding mismatch")
         except Exception:
             failures.append(f"router: {name} read failed")
-    try:
-        if _call(w3, block, router, "bootstrapFinalized()") != 1:
-            failures.append("router: bootstrap is not finalized")
-    except Exception:
-        failures.append("router: bootstrap read failed")
-    try:
-        if _call(w3, block, router, "totalEffectiveWeight()") == 0:
-            failures.append("router: effective weight is zero")
-    except Exception:
-        failures.append("router: effective weight read failed")
+    if manifest["rewardAssets"]:
+        try:
+            if _call(w3, block_ref, router, "bootstrapFinalized()") != 1:
+                failures.append("router: bootstrap is not finalized")
+        except Exception:
+            failures.append("router: bootstrap read failed")
+        try:
+            if _call(w3, block_ref, router, "totalEffectiveWeight()") == 0:
+                failures.append("router: effective weight is zero")
+        except Exception:
+            failures.append("router: effective weight read failed")
     for asset_name in manifest["rewardAssets"]:
         asset = contracts[asset_name]["address"]
         for signature, label in (("isRewardAsset(address)", "not registered"),
                                  ("rewardAssetEnabled(address)", "disabled")):
             try:
-                if _call(w3, block, router, signature, asset) != 1:
+                if _call(w3, block_ref, router, signature, asset) != 1:
                     failures.append(f"router: {asset_name} {label}")
             except Exception:
                 failures.append(f"router: {asset_name} readiness read failed")
 
     authority = contracts["authority"]["address"]
     try:
-        delay = _call(w3, block, authority, "getMinDelay()")
+        delay = _call(w3, block_ref, authority, "getMinDelay()")
         if delay < manifest["minimumAuthorityDelaySeconds"]:
             failures.append("authority: timelock delay below required minimum")
     except Exception:

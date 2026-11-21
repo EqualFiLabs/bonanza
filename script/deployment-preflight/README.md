@@ -2,8 +2,9 @@
 
 This read-only command checks an explicitly prepared manifest against one RPC
 block before a **fresh** Bonanza deployment. It checks that the selected block's
-hash is unchanged after all reads. It sends no transaction and reads no private
-key. It does not deploy a Diamond or qualify one after deployment.
+hash is unchanged after all reads and pins every code and view read to that hash
+using EIP-1898. It sends no transaction and reads no private key. It does not
+deploy a Diamond or qualify one after deployment.
 
 ## Prepare a manifest
 
@@ -31,7 +32,10 @@ deployment choices.
 ```
 
 `rewardAssets` names every payment token intended to carry a nonzero Operator
-share. Add each token to `contracts` with its verified address and runtime hash.
+share. Use `[]` if no configuration has an Operator share. Add each token to
+`contracts` with its verified address and runtime hash. Router bootstrap,
+effective weight, and reward-asset readiness are checked only when this list is
+nonempty; Router code and bindings are always checked.
 The `authority` must expose the OpenZeppelin-style `getMinDelay()` view. Set the
 minimum to the governance delay approved for this deployment; the example's
 value is illustrative, not a launch decision. If another governance executor is
@@ -55,8 +59,10 @@ The command exits `0` only when every check passes, `1` for a failed onchain
 check, and `2` for invalid input or a missing RPC variable. It checks the chain,
 each expected runtime hash, the Statics external-account interface on the
 PositionNFT, Router bindings and reward-asset readiness, and the authority's
-minimum delay. All code and view reads use one block number; a changed block
-hash fails the preflight. RPC URLs and transport exception text are not printed.
+minimum delay. All code and view reads use the selected block hash with
+`requireCanonical`; an endpoint that rejects EIP-1898 hash-pinned reads fails
+the preflight. A changed block hash also fails. RPC URLs and transport
+exception text are not printed.
 
 This preflight does not establish that a proxy implementation or governance
 configuration cannot later change. Before broadcast, review upgrade powers,
