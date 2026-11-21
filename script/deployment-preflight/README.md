@@ -61,8 +61,9 @@ each expected runtime hash, the Statics external-account interface on the
 PositionNFT, Router bindings and reward-asset readiness, and the authority's
 minimum delay. All code and view reads use the selected block hash with
 `requireCanonical`; an endpoint that rejects EIP-1898 hash-pinned reads fails
-the preflight. A changed block hash also fails. RPC URLs and transport
-exception text are not printed.
+the preflight. A changed block hash also fails. Getter calls disable CCIP Read,
+so an onchain `OffchainLookup` revert cannot fetch contract-supplied URLs or
+count as readiness. RPC URLs and transport exception text are not printed.
 
 This preflight does not establish that a proxy implementation or governance
 configuration cannot later change. Before broadcast, review upgrade powers,

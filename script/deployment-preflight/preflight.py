@@ -71,7 +71,7 @@ def _call(w3, block, address, signature, argument=None):
         encoded = bytes.fromhex(argument[2:]).rjust(32, b"\0") if argument else b""
     data = selector + encoded
     result = bytes(w3.eth.call({"to": Web3.to_checksum_address(address), "data": data},
-                               block_identifier=block))
+                               block_identifier=block, ccip_read_enabled=False))
     if len(result) != 32:
         raise ValueError("unexpected return length")
     return int.from_bytes(result, "big")

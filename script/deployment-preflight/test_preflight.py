@@ -5,7 +5,7 @@ import unittest
 from web3 import Web3
 from web3.providers.base import BaseProvider
 
-from preflight import check, validate_manifest
+from preflight import _call, check, validate_manifest
 
 
 NAMES = (
@@ -41,6 +41,7 @@ class FakeEth:
         self.binding_override = None
         self.read_blocks = []
         self.state_refs = []
+        self.ccip_flags = []
         self.block_hashes = [bytes.fromhex("aa" * 32)]
         self.block_hash_reads = 0
         self.supports_hash_refs = True
@@ -57,8 +58,11 @@ class FakeEth:
             raise RuntimeError("EIP-1898 unsupported")
         return self.code
 
-    def call(self, tx, block_identifier=None):
+    def call(self, tx, block_identifier=None, ccip_read_enabled=None):
         self.state_refs.append(block_identifier)
+        self.ccip_flags.append(ccip_read_enabled)
+        if ccip_read_enabled is not False:
+            raise RuntimeError("CCIP Read was not disabled")
         if not self.supports_hash_refs:
             raise RuntimeError("EIP-1898 unsupported")
         selector = bytes(tx["data"][:4])
@@ -96,7 +100,8 @@ class RecordingProvider(BaseProvider):
 
     def make_request(self, method, params):
         self.requests.append((method, params))
-        result = "0x1" if method == "eth_chainId" else "0x"
+        result = ("0x1" if method == "eth_chainId" else
+                  "0x" + "00" * 32 if method == "eth_call" else "0x")
         return {"jsonrpc": "2.0", "id": 1, "result": result}
 
 
@@ -107,8 +112,7 @@ class DeploymentPreflightTest(unittest.TestCase):
         address = Web3.to_checksum_address("0x" + "11" * 20)
         ref = {"blockHash": "0x" + "aa" * 32, "requireCanonical": True}
         w3.eth.get_code(address, block_identifier=ref)
-        w3.eth.call({"to": address, "data": "0x"}, block_identifier=ref,
-                    ccip_read_enabled=False)
+        _call(w3, ref, address, "getMinDelay()")
         state_reads = [params for method, params in provider.requests
                        if method in ("eth_getCode", "eth_call")]
         self.assertEqual([params[1] for params in state_reads], [ref, ref])
@@ -120,6 +124,8 @@ class DeploymentPreflightTest(unittest.TestCase):
         self.assertEqual(set(w3.eth.read_blocks), {123})
         self.assertEqual(w3.eth.block_hash_reads, 2)
         self.assertTrue(w3.eth.state_refs)
+        self.assertTrue(w3.eth.ccip_flags)
+        self.assertEqual(set(w3.eth.ccip_flags), {False})
         self.assertTrue(all(ref == {"blockHash": "0x" + "aa" * 32,
                                     "requireCanonical": True}
                             for ref in w3.eth.state_refs))
