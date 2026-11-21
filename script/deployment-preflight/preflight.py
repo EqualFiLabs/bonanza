@@ -77,6 +77,13 @@ def _call(w3, block, address, signature, argument=None):
     return int.from_bytes(result, "big")
 
 
+def _block_hash(w3, block):
+    block_hash = bytes(w3.eth.get_block(block)["hash"])
+    if len(block_hash) != 32:
+        raise ValueError("invalid block hash")
+    return block_hash
+
+
 def check(manifest, w3):
     """Return all failed checks; never send a transaction."""
     failures = []
@@ -91,6 +98,10 @@ def check(manifest, w3):
         block = w3.eth.block_number
     except Exception:
         return failures + ["block number: RPC read failed"]
+    try:
+        original_hash = _block_hash(w3, block)
+    except Exception:
+        return failures + ["block hash: initial RPC read failed"]
 
     for name, entry in contracts.items():
         try:
@@ -148,6 +159,11 @@ def check(manifest, w3):
             failures.append("authority: timelock delay below required minimum")
     except Exception:
         failures.append("authority: getMinDelay() read failed")
+    try:
+        if _block_hash(w3, block) != original_hash:
+            failures.append("block hash: selected height changed during preflight")
+    except Exception:
+        failures.append("block hash: final RPC read failed")
     return failures
 
 

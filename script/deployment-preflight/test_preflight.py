@@ -39,6 +39,14 @@ class FakeEth:
         self.delay = 86400
         self.binding_override = None
         self.read_blocks = []
+        self.block_hashes = [bytes.fromhex("aa" * 32)]
+        self.block_hash_reads = 0
+
+    def get_block(self, block):
+        self.read_blocks.append(block)
+        index = min(self.block_hash_reads, len(self.block_hashes) - 1)
+        self.block_hash_reads += 1
+        return {"hash": self.block_hashes[index]}
 
     def get_code(self, address, block_identifier=None):
         self.read_blocks.append(block_identifier)
@@ -81,6 +89,25 @@ class DeploymentPreflightTest(unittest.TestCase):
         self.assertEqual(check(config, w3), [])
         self.assertTrue(w3.eth.read_blocks)
         self.assertEqual(set(w3.eth.read_blocks), {123})
+        self.assertEqual(w3.eth.block_hash_reads, 2)
+
+    def test_replaced_block_height_fails_after_reads(self):
+        config = manifest()
+        w3 = FakeWeb3(config)
+        w3.eth.block_hashes = [bytes.fromhex("aa" * 32), bytes.fromhex("bb" * 32)]
+        self.assertEqual(check(config, w3),
+                         ["block hash: selected height changed during preflight"])
+        self.assertEqual(set(w3.eth.read_blocks), {123})
+        self.assertEqual(w3.eth.block_hash_reads, 2)
+
+    def test_unavailable_block_hash_fails_closed(self):
+        config = manifest()
+        w3 = FakeWeb3(config)
+        w3.eth.block_hashes = [b""]
+        self.assertEqual(check(config, w3), ["block hash: initial RPC read failed"])
+        w3.eth.block_hashes = [bytes.fromhex("aa" * 32), b""]
+        w3.eth.block_hash_reads = 0
+        self.assertEqual(check(config, w3), ["block hash: final RPC read failed"])
 
     def test_wrong_chain_stops_before_other_reads(self):
         config = manifest()

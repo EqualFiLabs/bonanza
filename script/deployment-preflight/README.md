@@ -1,8 +1,9 @@
 # Fresh-deployment dependency preflight
 
 This read-only command checks an explicitly prepared manifest against one RPC
-block before a **fresh** Bonanza deployment. It sends no transaction and reads
-no private key. It does not deploy a Diamond or qualify one after deployment.
+block before a **fresh** Bonanza deployment. It checks that the selected block's
+hash is unchanged after all reads. It sends no transaction and reads no private
+key. It does not deploy a Diamond or qualify one after deployment.
 
 ## Prepare a manifest
 
@@ -54,8 +55,8 @@ The command exits `0` only when every check passes, `1` for a failed onchain
 check, and `2` for invalid input or a missing RPC variable. It checks the chain,
 each expected runtime hash, the Statics external-account interface on the
 PositionNFT, Router bindings and reward-asset readiness, and the authority's
-minimum delay. All code and view reads use one block number. RPC URLs and
-transport exception text are not printed.
+minimum delay. All code and view reads use one block number; a changed block
+hash fails the preflight. RPC URLs and transport exception text are not printed.
 
 This preflight does not establish that a proxy implementation or governance
 configuration cannot later change. Before broadcast, review upgrade powers,
